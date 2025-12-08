@@ -35,6 +35,7 @@ This lets you build v6.18 RISC-V natively—faster clean builds than on Linux ho
    git clone https://github.com/NguyenTrongPhuc552003/Linux-Kernel-on-MacOS.git kernel-dev
    cd kernel-dev
    chmod +x run.sh
+   ./run.sh help    # How to use this script?
    ./run.sh doctor  # Checks deps (installs fixes if needed)
    ```
 
@@ -42,19 +43,25 @@ This lets you build v6.18 RISC-V natively—faster clean builds than on Linux ho
    ```bash
    ./run.sh  # Creates/mounts 20GB case-sensitive sparseimage at /Volumes/kernel-dev
    ```
-4. **Apply patch (skip this if you're not building linux kernel at v6.18 tag)**:
+
+4. **Checkout the target release**:
    ``` bash
-   ./run.sh branch v6.18  # Checks out tag v6.18 (detached HEAD for purity)
-   ./run.sh patch patches/v6.18/0001-usr-gen_init_cpio-Replace-linux-kernel-syscall-with-.patch
-   ```
-5. **Build v6.18 RISC-V**:
-   ```bash
-   ./run.sh arch riscv
-   ./run.sh config defconfig
-   ./run.sh build  # Or ./run.sh build 8 for 8 threads
+   ./run.sh branch v6.18  # Choose your tag release, e.g. v6.17, ... (detached HEAD for purity)
    ```
 
-6. **Output**:
+5. **Apply patch (skip this if you're not building linux kernel at v6.18 tag)**:
+   ``` bash
+   ./run.sh patch patches/v6.18/0001-usr-gen_init_cpio-Replace-linux-kernel-syscall-with-.patch
+   ```
+
+6. **Build your target architecture**:
+   ```bash
+   ./run.sh arch riscv        # e.g. arm, arm64, ...
+   ./run.sh config defconfig  # Choose your build configuration
+   ./run.sh build             # Or ./run.sh build 8 for 8 threads, default: -j$(nproc)
+   ```
+
+7. **Output**:
    - `arch/riscv/boot/Image`: Bootable RISC-V kernel.
    - Test in QEMU: `qemu-system-riscv64 -M virt -cpu rv64 -smp 4 -m 2G -kernel arch/riscv/boot/Image -nographic -append "console=ttyS0 root=/dev/vda ro"`
 
@@ -91,7 +98,7 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
 ```
 .
 ├── common.env          # Env vars: PATH, HOSTCFLAGS for LLVM/Clang/macOS SDK
-├── headers/            # Shims: byteswap.h (Clang builtins), elf.h (libelf compat)
+├── headers/            # Shims: byteswap.h (Clang builtins), elf.h (libelf compat) and olders
 ├── img.sparseimage     # 20GB case-sensitive APFS volume (hdiutil mount)
 ├── patches/            # Versioned patches
 │   └── v6.18/
@@ -100,9 +107,21 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
 ```
 
 ## Troubleshooting
+
+### Common problems
 - **"gmake not found"**: `brew install make` → use `gmake`.
-- **Slow incremental builds**: macOS Clang is faster on clean builds but slower on changes—use `run.sh clean` sparingly.
+- **Slow incremental builds**: macOS Clang is faster on clean builds but slower on changes → use `run.sh clean` sparingly.
 - **QEMU test fails**: Ensure `Image.gz` compressed: `gzip arch/riscv/boot/Image`.
+
+### Missing `asm/*.h` headers (older v6.* tags)
+- **Problem:** Checking out some older v6.x tags can fail on macOS with errors like `asm/types.h: No such file or directory` or `asm/posix_types.h: No such file or directory` when compiling host tools.
+- **Cause:** Some kernel trees (particularly early v6.0–v6.12) reference kernel-specific headers under `asm/` that macOS SDKs do not provide. Host tool compilation (e.g., `modpost`, gen_* helpers) therefore fails unless you provide compatible shims.
+- **Fixes (provided):**
+   - `headers/asm/types.h` — minimal shim defining `__u8/__s16/__u32/__u64` style types.
+   - `headers/asm/posix_types.h` — minimal shim providing common `__kernel_*` POSIX typedefs used by older trees.
+   The repository's `common.env` already adds `-I${HOME}/Documents/kernel-dev/linux/headers` to `HOSTCFLAGS`, so these shims will be picked up automatically when you source `common.env` or run `./run.sh`.
+- **Support policy:** This project is intended for Linux v6.x (modern v6 series) and later. We recommend targeting v6.13+ (the trees tested with included shims and patches). Older pre-v6.13 tags (especially early v6.0–v6.12) may require more extensive header shims or fixes and are not officially supported by this repository.
+- **Manual alternative:** If you prefer to manage headers yourself, copy the appropriate files from the kernel source (for example, `include/uapi/asm-generic/types.h` or the `asm-generic/posix_types.h` equivalents) into your `headers/` directory.
 
 ## Credits & Inspiration
 - **Original Tutorial**: [Building Linux on macOS Natively](https://seiya.me/blog/building-linux-on-macos-natively) by Seiya Suzuki—fixed v6.17 issues (old make, sed, headers). Inspired our v6.18 extensions.
