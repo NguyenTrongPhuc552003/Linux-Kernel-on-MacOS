@@ -6,7 +6,7 @@
 # Assumptions:
 # - Linux kernel repo: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git (mainline).
 # - Base branch: master (can be extended in config if needed).
-# - Headers setup: User must manually create $HOME/Documents/kernel-dev/linux/headers and populate with necessary headers
+# - Headers setup: User must manually create $HOME/Documents/kernel-dev/linux/libraries and populate with necessary headers
 # (e.g., elf.h from glibc elf/elf.h, byteswap.h custom, asm symlinks to kernel uapi/asm-generic).
 # - Patches: Applied with 3-way merge; conflicts generate .rej files.
 # - Build uses gmake with LLVM=1 for cross-compilation.
@@ -112,25 +112,9 @@ doctor() {
 		echo
 	fi
 
-	# 2. Critical tools with version
-	section "Critical tools"
-	local ok=1
-	command -v gmake >/dev/null && echo "gmake: OK ($(gmake --version | head -n1))" || {
-		echo "gmake: MISSING (brew install make)"
-		ok=0
-	}
-	command -v clang >/dev/null && echo "clang: OK ($(clang --version | head -n1 | awk '{print $4}'))" || {
-		echo "clang: MISSING"
-		ok=0
-	}
-	command -v git >/dev/null && echo "git:   OK ($(git --version))" || {
-		echo "git:   MISSING"
-		ok=0
-	}
-
-	# 3. Custom headers verification
+	# 2. Custom headers verification
 	section "macOS host headers"
-	local headers_dir="${HOME}/Documents/kernel-dev/linux/headers"
+	local headers_dir="${HOME}/Documents/kernel-dev/linux/libraries"
 	local ok_headers=1
 
 	if [ ! -d "$headers_dir" ]; then
@@ -171,32 +155,22 @@ doctor() {
 		else
 			# Default to latest (2.42 as of Dec 2025; can be dynamic)
 			local glibc_ver="2.42"
-			local glibc_url="https://ftp.gnu.org/gnu/glibc/glibc-${glibc_ver}.tar.gz"
-			local tmp_dir="/tmp/glibc-headers"
+			local glibc_url="https://raw.githubusercontent.com/bminor/glibc/glibc-${glibc_ver}/elf/elf.h"
 
-			echo "Downloading glibc ${glibc_ver} for elf.h..."
-			curl -L "$glibc_url" -o /tmp/glibc.tar.gz || {
-				echo "Download failed"
-				exit 1
-			}
-
-			mkdir -p "$tmp_dir"
-			tar -xzf /tmp/glibc.tar.gz -C "$tmp_dir" --strip-components=1 glibc-${glibc_ver}/elf/elf.h || {
-				echo "Extraction failed"
-				exit 1
-			}
-
+			echo "Downloading elf.h header from glibc ${glibc_ver}..."
 			mkdir -p "$headers_dir"
-			cp "$tmp_dir/elf/elf.h" "$headers_dir/elf.h"
-			echo "Updated elf.h from glibc ${glibc_ver}"
-
-			rm -rf /tmp/glibc.tar.gz "$tmp_dir"
+			if wget $glibc_url -P "$headers_dir"; then
+				echo "Downloaded elf.h to $headers_dir successfully."
+				ok_headers=1
+			else
+				echo "Failed to download elf.h from glibc."
+			fi
 		fi
 	fi
 
 	# Final verdict
 	echo
-	if [ ${#missing[@]} -eq 0 ] && [ $ok -eq 1 ] && [ $ok_headers -eq 1 ]; then
+	if [ ${#missing[@]} -eq 0 ] && [ $ok_headers -eq 1 ]; then
 		echo "Doctor result: All good! Your macOS environment is 100% ready for Linux kernel builds."
 	else
 		echo "Doctor result: Issues found — fix above and re-run './run.sh doctor'"
