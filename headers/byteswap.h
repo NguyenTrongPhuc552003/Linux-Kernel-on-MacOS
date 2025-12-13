@@ -1,4 +1,4 @@
-// scripts/includes/byteswap.h
+// ./headers/byteswap.h
 #pragma once
 #define bswap_16 __builtin_bswap16
 #define bswap_32 __builtin_bswap32
