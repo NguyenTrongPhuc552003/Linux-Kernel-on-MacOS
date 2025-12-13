@@ -99,9 +99,9 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
 ├── LICENSE             # MIT License
 ├── README.md           # This guide
 ├── common.env          # Env vars: PATH, HOSTCFLAGS for LLVM/Clang/macOS SDK
-├── headers/            # Shims: byteswap.h (Clang builtins), elf.h (libelf compat)
-│   └── asm/            # Symlinks to kernel uapi/asm-generic (bitsperlong.h, int-ll64.h, posix_types.h, types.h)
 ├── img.sparseimage     # 20GB case-sensitive APFS volume (hdiutil mount)
+├── libraries/          # Shims: byteswap.h (Clang builtins), elf.h (libelf compat)
+│   └── asm/            # Symlinks to kernel uapi/asm-generic (bitsperlong.h, int-ll64.h, posix_types.h, types.h)
 ├── patches/            # Versioned patches
 │   └── v6.18/
 │       └── *.patch     # Zero-copy workaround
@@ -120,11 +120,11 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
 - **Problem:** Checking out some older v6.x tags can fail on macOS with errors like `asm/types.h: No such file or directory` or `asm/posix_types.h: No such file or directory` when compiling host tools.
 - **Cause:** Some kernel trees (particularly early v6.0–v6.12) reference kernel-specific headers under `asm/` that macOS SDKs do not provide. Host tool compilation (e.g., `modpost`, gen_* helpers) therefore fails unless you provide compatible shims.
 - **Fixes (provided):**
-  - `headers/asm/types.h` — minimal shim defining `__u8/__s16/__u32/__u64` style types.
-  - `headers/asm/posix_types.h` — minimal shim providing common `__kernel_*` POSIX typedefs used by older trees.
-  The repository's `common.env` already adds `-I${HOME}/Documents/kernel-dev/linux/headers` to `HOSTCFLAGS`, so these shims will be picked up automatically when you source `common.env` or run `./run.sh`.
+  - `libraries/asm/types.h` — minimal shim defining `__u8/__s16/__u32/__u64` style types.
+  - `libraries/asm/posix_types.h` — minimal shim providing common `__kernel_*` POSIX typedefs used by older trees.
+  The repository's `common.env` already adds `-I${HOME}/Documents/kernel-dev/linux/libraries` to `HOSTCFLAGS`, so these shims will be picked up automatically when you source `common.env` or run `./run.sh`.
 - **Support policy:** This project is intended for Linux v6.x (modern v6 series) and later. We recommend targeting v6.13+ (the trees tested with included shims and patches). Older pre-v6.13 tags (especially early v6.0–v6.12) may require more extensive header shims or fixes and are not officially supported by this repository.
-- **Manual alternative:** If you prefer to manage headers yourself, copy the appropriate files from the kernel source (for example, `include/uapi/asm-generic/types.h` or the `asm-generic/posix_types.h` equivalents) into your `headers/` directory.
+- **Manual alternative:** If you prefer to manage headers yourself, copy the appropriate files from the kernel source (for example, `include/uapi/asm-generic/types.h` or the `asm-generic/posix_types.h` equivalents) into your `libraries/` directory.
 
 ## Credits & Inspiration
 - **Original Tutorial**: [Building Linux on macOS Natively](https://seiya.me/blog/building-linux-on-macos-natively) by Seiya Suzuki—fixed v6.17 issues (old make, sed, headers). Inspired our v6.18 extensions.
