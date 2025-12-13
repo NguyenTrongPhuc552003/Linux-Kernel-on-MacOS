@@ -127,6 +127,12 @@ doctor() {
 			ok_headers=0
 		}
 
+		# Check endian.h (nothing changes)
+		[ -f "$headers_dir/endian.h" ] && echo "endian.h: OK" || {
+			echo "endian.h: MISSING"
+			ok_headers=0
+		}
+
 		# Check elf.h
 		[ -f "$headers_dir/elf.h" ] && echo "elf.h: OK" || {
 			echo "elf.h: MISSING"
