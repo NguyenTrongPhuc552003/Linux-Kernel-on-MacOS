@@ -1,6 +1,6 @@
 # macOS Native Linux Kernel Builds
 
-[![Build Status](https://img.shields.io/badge/build-v6.18%20RISC--V-green)](https://github.com/NguyenTrongPhuc552003/macos-linux-kernel-build) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Build Status](https://img.shields.io/badge/build-v6.18%20RISC--V-green)](https://github.com/NguyenTrongPhuc552003/Linux-Kernel-on-MacOS) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Native builds for the Linux kernel (v6.18+) on macOS, targeting RISC-V, ARM64, and more. No Docker, no VMs—just Clang/LLVM, Homebrew, and targeted patches for host tool compatibility. This repo captures our best-effort workarounds for macOS's Unix-like (but non-Linux) environment, enabling clean, performant builds without compromises.
 
@@ -10,13 +10,13 @@ Inspired by [Seiya's tutorial](https://seiya.me/blog/building-linux-on-macos-nat
 
 Building the Linux kernel on macOS hits several walls:
 - **Old tools**: macOS ships GNU Make 3.81 (kernel needs ≥4.0), BSD `sed` (breaks VDSO offsets), and Clang without Linux headers like `elf.h`/`byteswap.h`.
-- **Syscall mismatches**: v6.18 introduced `copy_file_range()` in `usr/gen_init_cpio.c` for faster initramfs generation on reflink filesystems (Btrfs/XFS) [Phoronix coverage](https://www.phoronix.com/news/Linux-6.18-Kbuild). This Linux-only syscall (introduced in kernel 4.5) doesn't exist on macOS, which uses `copyfile()` for zero-copy transfers (leveraging CoW on APFS/HFS+).
+- **Syscall mismatches**: v6.18 introduced `copy_file_range()` in `usr/gen_init_cpio.c` for faster initramfs generation on reflink filesystems (Btrfs/XFS) [Phoronix coverage](https://www.phoronix.com/news/Linux-6.18-Kbuild). This Linux-only syscall (introduced in kernel 4.5) doesn't exist on macOS, which uses `copyfile()` for zero-copy transfers (leveraging CoW on APFS/HFS+). The exact commit introducing this in v6.18 is [here](https://github.com/torvalds/linux/commit/e1611eb3ef6e6abf9d4b2359ca454a1ffa4bb4d7).
 - **Header conflicts**: macOS's `<sys/types.h>` defines `uuid_t` differently, breaking `scripts/mod/file2alias.c`. No public `copy_file_range()` in SDKs (hidden as private `__copy_file_range` since macOS 10.15).
 - **Host vs. target**: Kernel host tools (compiled on macOS) need Linux-like env, but macOS is Darwin-based—hence shims, macros, and includes.
 
 Our workarounds:
 - **Patch `gen_init_cpio`**: Replace `copy_file_range()` with `copyfile(COPYFILE_DATA)` on macOS for equivalent zero-copy performance. Keeps Linux path intact.
-- **Custom headers**: Minimal `elf.h`/`byteswap.h` shims using Clang builtins.
+- **Custom headers**: Minimal `elf.h`/`byteswap.h` shims using Clang builtins. `asm/` symlinks to kernel uapi/asm-generic for older tags.
 - **Env tweaks**: `HOSTCFLAGS` exposes macOS SDK features without hardcoding.
 - **Script automation**: `run.sh` handles mounting, patching, and ARCH switching.
 
@@ -45,12 +45,12 @@ This lets you build v6.18 RISC-V natively—faster clean builds than on Linux ho
    ```
 
 4. **Checkout the target release**:
-   ``` bash
+   ```bash
    ./run.sh branch v6.18  # Choose your tag release, e.g. v6.17, ... (detached HEAD for purity)
    ```
 
 5. **Apply patch (skip this if you're not building linux kernel at v6.18 tag)**:
-   ``` bash
+   ```bash
    ./run.sh patch patches/v6.18/0001-usr-gen_init_cpio-Replace-linux-kernel-syscall-with-.patch
    ```
 
@@ -70,15 +70,14 @@ Switch to ARM64: `./run.sh arch arm64 && ./run.sh config defconfig && ./run.sh b
 ## Key Workarounds Explained
 
 ### 1. The v6.18 `copy_file_range()` Incompatibility
-- **What broke**: v6.18 optimized `gen_init_cpio` (initramfs generator) with `copy_file_range()` for zero-copy file copying [commit introducing it](https://github.com/torvalds/linux/commit/e1611eb3ef6e6abf9d4b2359ca454a1ffa4bb4d7) (from v6.18-rc1). This Linux syscall (kernel 4.5+) enables kernel-space transfers without user-space roundtrips—great for Btrfs/XFS reflinks [Phoronix details](https://www.phoronix.com/news/Linux-6.18-Kbuild).
-- **Why macOS fails**: No public `copy_file_range()` (private `__copy_file_range` since 10.15). macOS uses `copyfile()` for equivalent zero-copy (CoW on APFS).
-- **Our fix**: Patch replaces it with `copyfile(COPYFILE_DATA | COPYFILE_STAT)` on `__APPLE__`, falling back to read/write. Keeps Linux path intact—zero performance loss on either OS.
+- **What broke**: v6.18 optimized `gen_init_cpio` (initramfs generator) with `copy_file_range()` for faster initramfs generation on reflink filesystems (Btrfs/XFS) [Phoronix coverage](https://www.phoronix.com/news/Linux-6.18-Kbuild). This Linux-only syscall (introduced in kernel 4.5) doesn't exist on macOS, which uses `copyfile()` for zero-copy transfers (leveraging CoW on APFS/HFS+). The exact commit introducing this in v6.18 is [here](https://github.com/torvalds/linux/commit/e1611eb3ef6e6abf9d4b2359ca454a1ffa4bb4d7).
+- **Our fix**: Patch replaces it with `copyfile(COPYFILE_DATA)` on `__APPLE__`, falling back to read/write. Keeps Linux path intact—zero performance loss on either OS.
 - **Impact**: Builds succeed; initramfs generation stays fast (CoW on macOS).
 
 ### 2. HOSTCFLAGS Breakdown
 Add these to `common.env` or export manually. Each fixes a specific macOS gap:
 
-- `-I${HOME}/Documents/kernel-dev/linux/headers` (or `${MACOS_HEADERS}`): Custom shims for missing Linux headers (`elf.h`, `byteswap.h`). macOS lacks them; we provide minimal versions using Clang builtins (`__builtin_bswap*`).
+- `-I${MACOS_HEADERS}`: Custom shims for missing Linux headers (`elf.h`, `byteswap.h`). macOS lacks them; we provide minimal versions using Clang builtins (`__builtin_bswap*`).
 - `-I${LIBELF_INCLUDE}` (e.g., `$(brew --prefix libelf)/include`): Links libelf for ELF parsing in host tools like `modpost`. Fixes "elf.h not found" during module alias generation.
 - `-D_UUID_T -D__GETHOSTUUID_H`: Suppresses `uuid_t` conflicts. macOS `<sys/types.h>` defines `uuid_t` as a struct; Linux expects `int`/`uint32_t` in `file2alias.c`. These undefine/redefine to match kernel expectations.
 - `-D_DARWIN_C_SOURCE`: Unlocks macOS 10.15+ APIs (e.g., advanced syscalls in `<unistd.h>`). Without it, Clang hides non-POSIX features during host compilation.
@@ -97,8 +96,11 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
 ## Repo Structure
 ```
 .
+├── LICENSE             # MIT License
+├── README.md           # This guide
 ├── common.env          # Env vars: PATH, HOSTCFLAGS for LLVM/Clang/macOS SDK
-├── headers/            # Shims: byteswap.h (Clang builtins), elf.h (libelf compat) and olders
+├── headers/            # Shims: byteswap.h (Clang builtins), elf.h (libelf compat)
+│   └── asm/            # Symlinks to kernel uapi/asm-generic (bitsperlong.h, int-ll64.h, posix_types.h, types.h)
 ├── img.sparseimage     # 20GB case-sensitive APFS volume (hdiutil mount)
 ├── patches/            # Versioned patches
 │   └── v6.18/
@@ -110,16 +112,17 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
 
 ### Common problems
 - **"gmake not found"**: `brew install make` → use `gmake`.
-- **Slow incremental builds**: macOS Clang is faster on clean builds but slower on changes → use `run.sh clean` sparingly.
+- **UUID conflicts**: Ensure patch applied; check `scripts/mod/file2alias.c`.
+- **Slow incremental builds**: macOS Clang is faster on clean builds but slower on changes—use `run.sh clean` sparingly.
 - **QEMU test fails**: Ensure `Image.gz` compressed: `gzip arch/riscv/boot/Image`.
 
 ### Missing `asm/*.h` headers (older v6.* tags)
 - **Problem:** Checking out some older v6.x tags can fail on macOS with errors like `asm/types.h: No such file or directory` or `asm/posix_types.h: No such file or directory` when compiling host tools.
 - **Cause:** Some kernel trees (particularly early v6.0–v6.12) reference kernel-specific headers under `asm/` that macOS SDKs do not provide. Host tool compilation (e.g., `modpost`, gen_* helpers) therefore fails unless you provide compatible shims.
 - **Fixes (provided):**
-   - `headers/asm/types.h` — minimal shim defining `__u8/__s16/__u32/__u64` style types.
-   - `headers/asm/posix_types.h` — minimal shim providing common `__kernel_*` POSIX typedefs used by older trees.
-   The repository's `common.env` already adds `-I${HOME}/Documents/kernel-dev/linux/headers` to `HOSTCFLAGS`, so these shims will be picked up automatically when you source `common.env` or run `./run.sh`.
+  - `headers/asm/types.h` — minimal shim defining `__u8/__s16/__u32/__u64` style types.
+  - `headers/asm/posix_types.h` — minimal shim providing common `__kernel_*` POSIX typedefs used by older trees.
+  The repository's `common.env` already adds `-I${HOME}/Documents/kernel-dev/linux/headers` to `HOSTCFLAGS`, so these shims will be picked up automatically when you source `common.env` or run `./run.sh`.
 - **Support policy:** This project is intended for Linux v6.x (modern v6 series) and later. We recommend targeting v6.13+ (the trees tested with included shims and patches). Older pre-v6.13 tags (especially early v6.0–v6.12) may require more extensive header shims or fixes and are not officially supported by this repository.
 - **Manual alternative:** If you prefer to manage headers yourself, copy the appropriate files from the kernel source (for example, `include/uapi/asm-generic/types.h` or the `asm-generic/posix_types.h` equivalents) into your `headers/` directory.
 
@@ -130,4 +133,3 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
 
 ## License
 MIT — fork, extend, build freely.
-
