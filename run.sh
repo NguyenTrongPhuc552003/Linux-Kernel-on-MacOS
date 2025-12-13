@@ -6,7 +6,8 @@
 # Assumptions:
 # - Linux kernel repo: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git (mainline).
 # - Base branch: master (can be extended in config if needed).
-# - Headers setup: User must manually create $HOME/Documents/kernel-dev/linux/headers and populate with necessary headers (e.g., elf.h, byteswap.h from libelf or kernel sources).
+# - Headers setup: User must manually create $HOME/Documents/kernel-dev/linux/headers and populate with necessary headers
+# (e.g., elf.h from glibc elf/elf.h, byteswap.h custom, asm symlinks to kernel uapi/asm-generic).
 # - Patches: Applied with 3-way merge; conflicts generate .rej files.
 # - Build uses gmake with LLVM=1 for cross-compilation.
 # - Default ARCH mapping: arm64 (for Apple Silicon) or x86_64 (for Intel).
@@ -14,8 +15,7 @@
 # - Repo: Cloned into /Volumes/kernel-dev/linux if not present.
 # - Config persisted in /Volumes/kernel-dev/config.env for TARGET_ARCH.
 # - Mount required for most commands; use no args to mount, 'exit' to unmount.
-# - Doctor checks basics; extend as needed.
-# - Delete local branch: safe delete command at local repo
+# - Doctor checks basics; now includes headers verification and optional elf.h update from glibc.
 
 set -e
 
@@ -128,24 +128,76 @@ doctor() {
 		ok=0
 	}
 
-	# 3. Custom headers (required for macOS host compilation)
+	# 3. Custom headers verification
 	section "macOS host headers"
 	local headers_dir="${HOME}/Documents/kernel-dev/linux/headers"
-	if [[ -d "$headers_dir" &&
-		-f "$headers_dir/elf.h" &&
-		-f "$headers_dir/byteswap.h" ]]; then
-		echo "$headers_dir: OK (elf.h & byteswap.h found)"
+	local ok_headers=1
+
+	if [ ! -d "$headers_dir" ]; then
+		echo "$headers_dir: MISSING (create it)"
+		ok_headers=0
 	else
-		echo "$headers_dir: MISSING or incomplete"
-		echo "   Create directory and place elf.h, byteswap.h, etc."
-		echo "   (copy from libelf or kernel sources)"
-		ok=0
+		# Check byteswap.h (nothing changes)
+		[ -f "$headers_dir/byteswap.h" ] && echo "byteswap.h: OK" || {
+			echo "byteswap.h: MISSING"
+			ok_headers=0
+		}
+
+		# Check elf.h
+		[ -f "$headers_dir/elf.h" ] && echo "elf.h: OK" || {
+			echo "elf.h: MISSING"
+			ok_headers=0
+		}
+
+		# Check asm/ symlinks (linked to kernel uapi/asm-generic)
+		local uapi_path="/Volumes/kernel-dev/linux/include/uapi/asm-generic"
+		for h in bitsperlong.h int-ll64.h posix_types.h types.h; do
+			local link="$headers_dir/asm/$h"
+			if [ -L "$link" ] && [ "$(readlink "$link")" = "$uapi_path/$h" ]; then
+				echo "asm/$h: OK (linked to $uapi_path/$h)"
+			else
+				echo "asm/$h: MISSING or incorrect link"
+				ok_headers=0
+			fi
+		done
+	fi
+
+	# Optional: Update elf.h from glibc
+	if [ $ok_headers -eq 0 ] || [ ! -f "$headers_dir/elf.h" ]; then
+		echo "elf.h is missing or outdated. Update from glibc? (Y/n, default: latest)"
+		read -r choice
+		if [[ "${choice}" =~ ^[Nn]$ ]]; then
+			echo "Skipped elf.h update"
+		else
+			# Default to latest (2.42 as of Dec 2025; can be dynamic)
+			local glibc_ver="2.42"
+			local glibc_url="https://ftp.gnu.org/gnu/glibc/glibc-${glibc_ver}.tar.gz"
+			local tmp_dir="/tmp/glibc-headers"
+
+			echo "Downloading glibc ${glibc_ver} for elf.h..."
+			curl -L "$glibc_url" -o /tmp/glibc.tar.gz || {
+				echo "Download failed"
+				exit 1
+			}
+
+			mkdir -p "$tmp_dir"
+			tar -xzf /tmp/glibc.tar.gz -C "$tmp_dir" --strip-components=1 glibc-${glibc_ver}/elf/elf.h || {
+				echo "Extraction failed"
+				exit 1
+			}
+
+			mkdir -p "$headers_dir"
+			cp "$tmp_dir/elf/elf.h" "$headers_dir/elf.h"
+			echo "Updated elf.h from glibc ${glibc_ver}"
+
+			rm -rf /tmp/glibc.tar.gz "$tmp_dir"
+		fi
 	fi
 
 	# Final verdict
 	echo
-	if [ ${#missing[@]} -eq 0 ] && [ $ok -eq 1 ]; then
-		echo "Doctor result: Everything looks perfect! Ready to build Linux on macOS."
+	if [ ${#missing[@]} -eq 0 ] && [ $ok -eq 1 ] && [ $ok_headers -eq 1 ]; then
+		echo "Doctor result: All good! Your macOS environment is 100% ready for Linux kernel builds."
 	else
 		echo "Doctor result: Issues found — fix above and re-run './run.sh doctor'"
 		return 1
@@ -332,7 +384,7 @@ Commands:
   config [type]             make defconfig (or allnoconfig, etc.)
   build [jobs] [targets]    Build (default: all cores, Image dtbs modules)
   clean                     make distclean
-  reset                     git reset --hard origin/master (with confirm)
+  reset                     git reset --hard origin/master
   delete <branch>           Safe delete a local branch
   exit                      Unmount volume
   help                      This message
