@@ -94,18 +94,25 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
 - **Why patch?**: Direct mapping keeps performance (CoW on macOS ≈ reflink on Linux). Fallback to read/write ensures portability. This bridges Darwin's Mach/BSD hybrid to Linux's monolithic VFS without disabling features.
 
 ## Repo Structure
-```
+```tree
 .
 ├── LICENSE             # MIT License
 ├── README.md           # This guide
-├── common.env          # Env vars: PATH, HOSTCFLAGS for LLVM/Clang/macOS SDK
+├── common.env          # Env vars: PATH, HOSTCFLAGS, ANSI Colors, and sources all modular scripts.
 ├── img.sparseimage     # 20GB case-sensitive APFS volume (hdiutil mount)
 ├── libraries/          # Shims: byteswap.h (Clang builtins), elf.h (libelf compat)
 │   └── asm/            # Symlinks to kernel uapi/asm-generic (bitsperlong.h, int-ll64.h, posix_types.h, types.h)
 ├── patches/            # Versioned patches
 │   └── v6.18/
 │       └── *.patch     # Zero-copy workaround
-└── run.sh              # Main script: mount, doctor, build, patch, branch, etc.
+├── run.sh              # Main Dispatcher: Minimal script for command parsing; delegates all logic to scripts/*.
+└── scripts/            # New: Contains all modular logic, sourced by common.env
+    ├── branch.sh       # Handles git branch/tag checkout, creation, and safe deletion.
+    ├── build.sh        # Handles ARCH persistence, make config, make build, and make clean.
+    ├── doctor.sh       # Handles environment/dependency checks.
+    ├── image.sh        # Handles sparse image mounting and unmounting.
+    ├── patch.sh        # Handles git apply --3way for patch files.
+    └── repo.sh         # Handles git status, clone, update, reset, and reinitialize.
 ```
 
 ## Troubleshooting
