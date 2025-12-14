@@ -29,7 +29,7 @@ run_doctor() {
 	# 1. Homebrew Packages
 	# ─────────────────────────────────────────────────────────────
 	echo "Checking Homebrew packages:"
-	local REQUIRED_BREW=(llvm lld gnu-sed make libelf git)
+	local REQUIRED_BREW=(llvm lld gnu-sed make libelf git qemu fakeroot)
 	local INSTALLED_BREW
 	INSTALLED_BREW=$(brew list --formulae 2>/dev/null)
 
@@ -104,7 +104,16 @@ run_doctor() {
 		fi
 	fi
 
-	# 4. Final Verdict
+	# 4. Check for debootstrap submodule
+	# ─────────────────────────────────────────────────────────────
+	if [ ! -f "${DEBOOTSTRAP_PATH}/debootstrap" ]; then
+		echo -e "  [${RED}MISSING${NC}] debootstrap submodule not found at tools/debootstrap."
+		echo "    -> Fix: git submodule update --init tools/debootstrap"
+		issues_found=1
+		echo
+	fi
+
+	# 5. Final Verdict
 	# ─────────────────────────────────────────────────────────────
 	if [ "$issues_found" -eq 0 ]; then
 		echo -e "${GREEN}Doctor result: All good! System ready for kernel build.${NC}"

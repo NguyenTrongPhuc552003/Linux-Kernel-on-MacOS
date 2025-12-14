@@ -75,11 +75,22 @@ patch)
 config)
 	run_config "$1"
 	;;
+rootfs)
+	package_initramfs
+	;;
 build)
 	run_build "$@" # Pass all remaining arguments (jobs, targets)
 	;;
 clean)
 	run_clean
+	;;
+qemu)
+	# Check for a second argument
+	if [ "$2" = "-d" ]; then
+		run_qemu_gdb
+	else
+		run_qemu
+	fi
 	;;
 
 # --------------------------------------------------
@@ -109,7 +120,9 @@ help | *)
 	printf "    %-15s %s\n" "arch <target>" "Sets target architecture (e.g., arm64, x86_64)."
 	printf "    %-15s %s\n" "patch <file>" "Applies a patch file (e.g., patches/v6.18/0001.patch)."
 	printf "    %-15s %s\n" "config [type]" "make defconfig or type (e.g., allnoconfig)."
+	printf "    %-15s %s\n" "rootfs" "Creates/packages minimal Debian Initramfs (debootstrap)."
 	printf "    %-15s %s\n" "build [jb] [tg]" "make -j[cores] target (default: Image dtbs modules)."
 	printf "    %-15s %s\n" "clean" "make distclean."
+	printf "    %-15s %s\n" "qemu [-d]" "Runs or debugs the built kernel in QEMU (using current ARCH)."
 	;;
 esac
