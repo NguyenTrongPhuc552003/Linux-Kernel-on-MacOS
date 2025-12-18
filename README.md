@@ -22,7 +22,7 @@ Our workarounds:
 
 This lets you build v6.18 RISC-V natively—faster clean builds than on Linux hosts, per benchmarks.
 
-## Quick Start with RISC-V target
+## Quick Start with ARM64 target
 
 1. **Prerequisites** (macOS Sequoia/Tahoe+ recommended):
    ```bash
@@ -56,16 +56,23 @@ This lets you build v6.18 RISC-V natively—faster clean builds than on Linux ho
 
 6. **Build your target architecture**:
    ```bash
-   ./run.sh arch riscv        # e.g. arm, arm64, ...
-   ./run.sh config defconfig  # Choose your build configuration
-   ./run.sh build             # Or ./run.sh build 8 for 8 threads, default: -j$(nproc)
+   ./run.sh arch arm64  # You can choose riscv, arm, ...
+   ./run.sh config      # Default: defconfig, you can choose another
+   ./run.sh build       # Or ./run.sh build 8 for 8 threads, default: -j$(nproc)
    ```
 
 7. **Output**:
    - `arch/riscv/boot/Image`: Bootable RISC-V kernel.
    - Test in QEMU: `qemu-system-riscv64 -M virt -cpu rv64 -smp 4 -m 2G -kernel arch/riscv/boot/Image -nographic -append "console=ttyS0 root=/dev/vda ro"`
 
-Switch to ARM64: `./run.sh arch arm64 && ./run.sh config defconfig && ./run.sh build`.
+8. **Launch in QEMU:**
+   ```bash
+   ./run.sh rootfs   # Prepare & package Debian Initramfs
+   ./run.sh qemu     # Start running our Image (default: -nographic)
+   ./run.sh qemu -d  # Or boot with GDB stub enabled (port: 2222)
+   ```
+
+Switch to RISC-V: `./run.sh arch riscv && ./run.sh config && ./run.sh build`.
 
 ## Key Workarounds Explained
 
@@ -106,13 +113,17 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
 │   └── v6.18/
 │       └── *.patch     # Zero-copy workaround
 ├── run.sh              # Main Dispatcher: Minimal script for command parsing; delegates all logic to scripts/*.
-└── scripts/            # New: Contains all modular logic, sourced by common.env
-    ├── branch.sh       # Handles git branch/tag checkout, creation, and safe deletion.
-    ├── build.sh        # Handles ARCH persistence, make config, make build, and make clean.
-    ├── doctor.sh       # Handles environment/dependency checks.
-    ├── image.sh        # Handles sparse image mounting and unmounting.
-    ├── patch.sh        # Handles git apply --3way for patch files.
-    └── repo.sh         # Handles git status, clone, update, reset, and reinitialize.
+├── scripts/            # New: Contains all modular logic, sourced by common.env
+│   ├── branch.sh       # Handles git branch/tag checkout, creation, and safe deletion.
+│   ├── build.sh        # Handles ARCH persistence, make config, make build, and make clean.
+│   ├── doctor.sh       # Handles environment/dependency checks.
+│   ├── image.sh        # Handles sparse image mounting and unmounting.
+│   ├── patch.sh        # Handles git apply --3way for patch files.
+│   ├── repo.sh         # Handles git status, clone, update, reset, and reinitialize.
+│   ├── qemu.sh         # Launching QEMU with built initramfs.cpio and kernel Image
+│   └── rootfs.sh       # Initramfs/RootFS initialization using debootstrap tool
+└── tools/
+    └── debootstrap     # Debian bootstrap toolset
 ```
 
 ## Troubleshooting
@@ -132,6 +143,11 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
   The repository's `common.env` already adds `-I${HOME}/Documents/kernel-dev/linux/libraries` to `HOSTCFLAGS`, so these shims will be picked up automatically when you source `common.env` or run `./run.sh`.
 - **Support policy:** This project is intended for Linux v6.x (modern v6 series) and later. We recommend targeting v6.13+ (the trees tested with included shims and patches). Older pre-v6.13 tags (especially early v6.0–v6.12) may require more extensive header shims or fixes and are not officially supported by this repository.
 - **Manual alternative:** If you prefer to manage headers yourself, copy the appropriate files from the kernel source (for example, `include/uapi/asm-generic/types.h` or the `asm-generic/posix_types.h` equivalents) into your `libraries/` directory.
+
+## Roadmap
+* [x] **v1.0.0**: Initial native kernel build success.
+* [x] **v1.1.0**: Modular scripts, automated debootstrap, and stable Initramfs boot.
+* [ ] **v2.0.0**: Persistent Storage Mode (**soon**) — Transitioning to persistent EXT4 disk images for faster booting.
 
 ## Credits & Inspiration
 - **Original Tutorial**: [Building Linux on macOS Natively](https://seiya.me/blog/building-linux-on-macos-natively) by Seiya Suzuki—fixed v6.17 issues (old make, sed, headers). Inspired our v6.18 extensions.
