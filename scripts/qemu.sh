@@ -1,121 +1,174 @@
 #!/bin/bash
 # scripts/qemu.sh
-# Handles QEMU execution and GDB debugging for a pre-built, initramfs-based Linux kernel.
-
-# Requires: INITRAMFS_ARCHIVE, KERNEL_DIR, TARGET_ARCH are set.
+# Handles QEMU execution for a disk-based Linux kernel (ext4 rootfs on disk.img).
+# Requires: KERNEL_DIR, TARGET_ARCH, DISK_IMAGE (from common.env)
 
 # ─────────────────────────────────────────────────────────────
-# 1. Architecture Configuration Strategy
+# Configurable constants
+# ─────────────────────────────────────────────────────────────
+QEMU_GDB_PORT=1234 # Port for GDB stub
+
+# ─────────────────────────────────────────────────────────────
+# 1. Architecture-specific QEMU configuration
 # ─────────────────────────────────────────────────────────────
 _configure_qemu_for_arch() {
 	# Default settings
 	QEMU_MEMORY="2G"
-	QEMU_SMP="$(sysctl -n hw.ncpu)"
-	QEMU_CONSOLE="ttyS0" # Default, overridden below if needed
+	QEMU_SMP="$(sysctl -n hw.logicalcpu)"
 
 	case "$TARGET_ARCH" in
 	riscv)
 		QEMU_BIN="qemu-system-riscv64"
-		QEMU_ARCH_FLAGS=(
-			-machine virt
-			-bios default
-			-cpu rv64
-		)
+		QEMU_MACHINE="virt"
+		QEMU_CPU="rv64"
 		QEMU_CONSOLE="ttyS0"
+		QEMU_BIOS="-bios default" # Uses built-in OpenSBI
 		;;
 	arm64)
 		QEMU_BIN="qemu-system-aarch64"
-		QEMU_ARCH_FLAGS=(
-			-machine virt
-			-cpu max
-		)
-		QEMU_CONSOLE="ttyAMA0" # Standard console for ARM64 virt machine
+		QEMU_MACHINE="virt"
+		QEMU_CPU="cortex-a72" # Reliable and widely supported
+		QEMU_CONSOLE="ttyAMA0"
+		QEMU_BIOS="" # EFI not needed for direct kernel boot on virt
 		;;
 	*)
-		echo -e "  [${RED}ERROR${NC}] Unsupported ARCH for QEMU: ${TARGET_ARCH}" >&2
+		echo -e "  [${RED}ERROR${NC}] Unsupported TARGET_ARCH for QEMU: ${TARGET_ARCH}" >&2
 		exit 1
 		;;
 	esac
 }
 
 # ─────────────────────────────────────────────────────────────
-# 2. Main Execution Logic
+# 2. Core execution logic
 # ─────────────────────────────────────────────────────────────
 _execute_qemu() {
-	local GDB_FLAGS="$1"
-	local DEBUG_MODE="$2"
-
-	# 1. Configuration & Validation
-	local KERNEL_IMAGE="${KERNEL_DIR}/arch/${TARGET_ARCH}/boot/Image"
+	local GDB_FLAGS="$1"    # e.g., "-s -S" for gdb
+	local VERBOSE_MODE="$2" # if "verbose", skip -nographic
 
 	_configure_qemu_for_arch
 
-	if ! command -v "$QEMU_BIN" &>/dev/null; then
-		echo -e "  [${RED}ERROR${NC}] Binary '$QEMU_BIN' not found." >&2
+	local KERNEL_IMAGE="${KERNEL_DIR}/arch/${TARGET_ARCH}/boot/Image"
+
+	# Validation
+	if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
+		echo -e "  [${RED}ERROR${NC}] $QEMU_BIN not found. Install QEMU via Homebrew: brew install qemu" >&2
 		exit 1
 	fi
+
 	if [ ! -f "$KERNEL_IMAGE" ]; then
-		echo -e "  [${RED}ERROR${NC}] Kernel image '$KERNEL_IMAGE' not found. Run './run.sh build' first."
-		exit 1
-	fi
-	if [ ! -f "$INITRAMFS_ARCHIVE" ]; then
-		echo -e "  [${RED}ERROR${NC}] Initramfs archive '$INITRAMFS_ARCHIVE' not found. Run './run.sh rootfs' first."
+		echo -e "  [${RED}ERROR${NC}] Kernel Image not found: $KERNEL_IMAGE"
+		echo "  Run './run.sh build' first."
 		exit 1
 	fi
 
-	echo -e "  [${YELLOW}QEMU${NC}] Starting emulation for ${GREEN}${TARGET_ARCH}${NC}..."
-	[ -n "$GDB_FLAGS" ] && echo -e "  [${YELLOW}DEBUG${NC}] GDB Stub enabled."
+	if [ ! -f "$DISK_IMAGE" ]; then
+		echo -e "  [${RED}ERROR${NC}] Disk image not found: $DISK_IMAGE"
+		echo "  Run './run.sh rootfs' first to create the root filesystem."
+		exit 1
+	fi
 
-	# 3. Construct Command Array (SAFELY)
+	echo -e "  [${YELLOW}QEMU${NC}] Starting ${GREEN}${TARGET_ARCH}${NC} emulation with disk-based rootfs..."
+	[ -n "$GDB_FLAGS" ] && echo -e "  [${YELLOW}DEBUG${NC}] GDB stub enabled (-s -S). Connect with: gdb -ex \"target remote localhost:${QEMU_GDB_PORT}\""
+
+	# Base command
 	local QEMU_CMD=(
 		"$QEMU_BIN"
 		-m "$QEMU_MEMORY"
 		-smp "$QEMU_SMP"
 		-kernel "$KERNEL_IMAGE"
-		-initrd "$INITRAMFS_ARCHIVE"
+		$QEMU_BIOS
+		-machine "$QEMU_MACHINE"
+		${QEMU_CPU:+-cpu "$QEMU_CPU"}
 
-		# Serial Console (Routes Linux output to terminal)
-		-serial mon:stdio
+		# Disk: virtio-blk with our ext4 image
+		-drive file="${DISK_IMAGE}",format=raw,if=virtio
 
-		# Networking Device (VirtIO Net + User NAT)
+		# Basic GPU (virtio-gpu-pci)
+		-device virtio-gpu-pci
+
+		# Networking: user-mode + SSH forwarding (host:2222 -> guest:22)
 		-device virtio-net-device,netdev=net0
-		-netdev user,id=net0,hostfwd=tcp::2222-:22 # Host port 2222 -> Guest port 22
+		-netdev user,id=net0,hostfwd=tcp::2222-:22
 
-		# Architecture Specific Flags
-		"${QEMU_ARCH_FLAGS[@]}"
-
-		# Debug Flags (e.g., -s -S)
-		$GDB_FLAGS
+		# Serial console
+		-serial mon:stdio
 	)
 
-	# Debug/Verbose handling for -nographic flag
-	if [ "$DEBUG_MODE" != "verbose" ]; then
+	# Graphics mode
+	if [ "$VERBOSE_MODE" != "verbose" ]; then
 		QEMU_CMD+=(-nographic)
 	fi
 
-	# 4. Append Kernel Command Line (Boots directly from the prepared disk image)
-	# root=/dev/vda is used because the entire disk was formatted (mkfs.ext4 "${DISK_IMAGE}").
-	local KERNEL_CMDLINE="console=$QEMU_CONSOLE root=/dev/vda rw earlycon"
+	# GDB support
+	[ -n "$GDB_FLAGS" ] && QEMU_CMD+=($GDB_FLAGS)
+
+	# Kernel command line: critical for disk boot
+	local KERNEL_CMDLINE="console=${QEMU_CONSOLE} root=/dev/vda rw init=/init earlycon"
 	QEMU_CMD+=(-append "$KERNEL_CMDLINE")
 
-	# 5. Execute Safely
-	echo -e "  [${YELLOW}CMD${NC}] Executing: ${QEMU_CMD[*]}"
-
-	if "${QEMU_CMD[@]}"; then # Use quotes and @ to pass array elements safely
-		echo -e "  [${GREEN}QEMU${NC}] Emulation session finished."
-	else
-		echo -e "  [${RED}FAIL${NC}] QEMU execution failed." >&2
-		exit 1
-	fi
+	# Show and execute
+	echo -e "  [${YELLOW}CMD${NC}] ${QEMU_CMD[*]}"
+	"${QEMU_CMD[@]}"
 }
 
 # ─────────────────────────────────────────────────────────────
-# 3. Public Functions (Called by run.sh)
+# 3. Unified QEMU runner – handles debug and verbose modes
 # ─────────────────────────────────────────────────────────────
 run_qemu() {
-	_execute_qemu "" "$1"
-}
+	local debug_mode=""
+	local verbose_mode=""
 
-run_qemu_gdb() {
-	_execute_qemu "-s -S" "$1"
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		-d | --debug)
+			debug_mode="yes"
+			shift
+			;;
+		-v | --verbose)
+			verbose_mode="yes"
+			shift
+			;;
+		-h | --help)
+			cat <<EOF
+${GREEN}QEMU Launcher Help${NC}
+
+Usage: ./run.sh qemu [options]
+
+Options:
+  -d      	 Start QEMU in debug mode
+			 > Opens GDB stub on tcp::${QEMU_GDB_PORT}
+			 > Pauses CPU at startup (-S flag)
+			 > Connect with: riscv64-unknown-linux-gnu-gdb vmlinux
+					 (gdb) target remote localhost:${QEMU_GDB_PORT}
+					 (gdb) continue
+
+  -v, --verbose  Disable -nographic → shows QEMU graphical window
+            	 (useful for virtio-gpu testing or future framebuffer console)
+
+  -h, --help     Show this help message
+
+Examples:
+  ./run.sh qemu              Normal console boot
+  ./run.sh qemu -d           Debug mode (paused, waiting for GDB)
+  ./run.sh qemu -verbose     Boot with graphical window
+  ./run.sh qemu -d -verbose  Debug mode + graphical window
+  ./run.sh qemu -h           Show this help
+
+EOF
+			return 0
+			;;
+		*)
+			echo -e "  [${RED}ERROR${NC}] Unknown argument: $1"
+			echo "  Usage: ./run.sh qemu [-h] [-d] [-verbose]"
+			return 1
+			;;
+		esac
+	done
+
+	if [ -n "$debug_mode" ]; then
+		echo -e " [${YELLOW}QEMU${NC}] Starting in DEBUG mode (GDB stub on port $QEMU_GDB_PORT, CPU paused)"
+		_execute_qemu "-s -S" "$verbose_mode"
+	else
+		_execute_qemu "" "$verbose_mode"
+	fi
 }

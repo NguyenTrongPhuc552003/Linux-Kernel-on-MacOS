@@ -1,66 +1,125 @@
 #!/bin/bash
 # scripts/patch.sh
-# Handles the application of a patch file using git's 3-way merge.
+# Modular patch application using 'git am' (preferred over git apply).
+# Supports standard .patch files with commit metadata.
 
 # ─────────────────────────────────────────────────────────────
-# 1. Apply a Patch File
+# Helper: Validate patch file existence and resolve path
+# ─────────────────────────────────────────────────────────────
+resolve_patch_path() {
+	local input_path="$1"
+
+	if [[ -z "$input_path" ]]; then
+		echo -e "  [${RED}ERROR${NC}] No patch file specified."
+		echo "  Usage: ./run.sh patch <path/to/patchfile.patch>"
+		return 1
+	fi
+
+	local full_path
+	if [[ "$input_path" == /* ]]; then
+		# Absolute path
+		full_path="$input_path"
+	else
+		# Relative to project root (SCRIPT_DIR)
+		full_path="${SCRIPT_DIR}/${input_path}"
+	fi
+
+	if [ ! -f "$full_path" ]; then
+		echo -e "  [${RED}FAIL${NC}] Patch file not found: $full_path"
+		return 1
+	fi
+
+	echo "$full_path"
+}
+
+# ─────────────────────────────────────────────────────────────
+# Helper: Check if patch can be applied cleanly
+# ─────────────────────────────────────────────────────────────
+check_patch_applicability() {
+	local patch_file="$1"
+
+	echo -e "  [${YELLOW}CHECK${NC}] Testing patch applicability..."
+
+	# Clean any aborted am session
+	git am --abort 2>/dev/null || true
+
+	# First try: git am dry-run (preferred, preserves commit)
+	if git am --3way --dry-run "$patch_file" >/dev/null 2>&1; then
+		echo -e "  [${GREEN}OK${NC}] Patch passes 'git am' dry-run."
+		return 0
+	fi
+
+	echo -e "  [${YELLOW}NOTE${NC}] 'git am --dry-run' failed, trying fallback check..."
+
+	# Fallback: git apply --check (more tolerant for context)
+	if git apply --3way --check "$patch_file" >/dev/null 2>&1; then
+		echo -e "  [${GREEN}OK${NC}] Patch passes 'git apply --check' (will use git am anyway)."
+		return 0
+	fi
+
+	echo -e "  [${RED}FAIL${NC}] Patch cannot be applied cleanly with either method."
+	return 1
+}
+
+# ─────────────────────────────────────────────────────────────
+# Core: Apply patch using git am
+# ─────────────────────────────────────────────────────────────
+check_patch_git() {
+	local patch_file="$1"
+	local patch_name
+	patch_name=$(basename "$patch_file")
+
+	echo -e "  [${YELLOW}APPLY${NC}] Applying patch: $patch_name"
+
+	# Final application
+	if git am --3way --signoff "$patch_file"; then
+		echo -e "  [${GREEN}SUCCESS${NC}] Patch '$patch_name' applied successfully with commit."
+	else
+		echo -e "  [${RED}CONFLICT${NC}] Patch application failed due to conflicts."
+		echo "  → Run 'git am --abort' to cancel, or 'git am --continue' after resolving."
+		echo "  → Conflicted files are marked with conflict markers."
+		return 1
+	fi
+}
+
+# ─────────────────────────────────────────────────────────────
+# Public function called by run.sh patch
 # ─────────────────────────────────────────────────────────────
 apply_patch() {
 	local patch_path="$1"
+	local full_patch
 
-	if [[ -z "$patch_path" ]]; then
-		echo -e "  [${RED}ERROR${NC}] Usage: patch <path/to/patchfile>"
-		echo "  Example: patch patches/v6.18/0001-my-change.patch"
-		exit 1
-	fi
+	# 1. Resolve and validate patch path
+	full_patch=$(resolve_patch_path "$patch_path") || return 1
 
-	# 1. Resolve path
-	local full_patch_path
-	# Check if the path is absolute or relative to the project root
-	if [[ "$patch_path" == /* ]]; then
-		# Absolute path provided
-		full_patch_path="$patch_path"
-	else
-		# Assume path is relative to SCRIPT_DIR (project root)
-		full_patch_path="${SCRIPT_DIR}/${patch_path}"
-	fi
-
-	# 2. Check existence
-	if [ ! -f "$full_patch_path" ]; then
-		echo -e "  [${RED}FAIL${NC}] Patch file not found at: $full_patch_path"
-		exit 1
-	fi
-
+	# 2. Ensure kernel directory is ready
 	ensure_mounted
 	cd "$KERNEL_DIR" || {
-		echo -e "  [${RED}FAIL${NC}] Could not enter KERNEL_DIR."
-		exit 1
+		echo -e "  [${RED}FAIL${NC}] Cannot access kernel source directory: $KERNEL_DIR"
+		return 1
 	}
 
-	echo -e "  [${YELLOW}PATCH${NC}] Applying patch: $(basename "$patch_path")"
+	# 3. Dry-run check
+	if ! check_patch_applicability "$full_patch"; then
+		echo
+		echo -e "  [${YELLOW}HINT${NC}] Possible reasons:"
+		echo "    • Patch already applied"
+		echo "    • Kernel version mismatch"
+		echo "    • Patch format incompatible with 'git am'"
+		echo
+		echo "  Try: git apply --check '$full_patch' for raw apply test"
+		return 1
+	fi
 
-	# Use git apply with --3way for conflict handling.
-	# --check: Verify the patch can be applied without actually applying it.
-	if git apply --check --3way "$full_patch_path"; then
-		echo -e "  [${YELLOW}INFO${NC}] Patch check passed. Applying..."
+	echo
 
-		# Apply the patch
-		if git apply --3way "$full_patch_path"; then
-			echo -e "  [${GREEN}SUCCESS${NC}] Patch applied successfully."
-
-			# Check for rejected files (.rej) that indicate merge conflicts
-			# This is critical for 3-way to work; conflicts still leave .rej files
-			if find . -name "*.rej" -print -quit 2>/dev/null; then
-				echo -e "  [${RED}WARNING${NC}] Conflicts found! Review and manually resolve *.rej files."
-			fi
-
-		else
-			echo -e "  [${RED}FAIL${NC}] Patch application failed. Check above output."
-			exit 1
-		fi
+	# 4. Apply the patch
+	if check_patch_git "$full_patch"; then
+		echo
+		echo -e "  [${GREEN}DONE${NC}] Patch applied and committed."
+		echo "  Use 'git log -1' to view the new commit."
+		return 0
 	else
-		echo -e "  [${RED}FAIL${NC}] Patch check failed. Patch may be outdated or already applied."
-		echo "  Try applying manually or updating the kernel source."
-		exit 1
+		return 1
 	fi
 }

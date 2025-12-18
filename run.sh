@@ -76,7 +76,7 @@ config)
 	run_config "$1"
 	;;
 rootfs)
-	package_initramfs
+	create_disk_image
 	;;
 build)
 	run_build "$@" # Pass all remaining arguments (jobs, targets)
@@ -85,12 +85,7 @@ clean)
 	run_clean
 	;;
 qemu)
-	# Check for a second argument
-	if [ "$2" = "-d" ]; then
-		run_qemu_gdb
-	else
-		run_qemu
-	fi
+	run_qemu "$@"
 	;;
 
 # --------------------------------------------------
