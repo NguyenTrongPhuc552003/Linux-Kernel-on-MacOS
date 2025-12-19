@@ -85,6 +85,15 @@ mount -t devtmpfs dev /dev 2>/dev/null || mount -t tmpfs dev /dev
 [ -d /dev/pts ] || mkdir /dev/pts
 mount -t devpts devpts /dev/pts
 
+# Network configuration (static for QEMU user mode)
+ip link set lo up
+ip link set eth0 up
+ip addr add 10.0.2.15/24 dev eth0
+ip route add default via 10.0.2.2
+
+# DNS setup
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
+
 echo "System ready."
 
 # Drop to interactive shell
