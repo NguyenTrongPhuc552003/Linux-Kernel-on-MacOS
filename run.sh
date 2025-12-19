@@ -112,7 +112,7 @@ help | *)
 	printf "    %-15s %s\n" "delete <name>" "Safely deletes a local branch."
 	echo
 	printf "  ${GREEN}Build Pipeline${NC}\n"
-	printf "    %-15s %s\n" "arch <target>" "Sets target architecture (e.g., arm64, x86_64)."
+	printf "    %-15s %s\n" "arch <target>" "Sets target architecture (e.g., riscv, arm64)."
 	printf "    %-15s %s\n" "patch <file>" "Applies a patch file (e.g., patches/v6.18/0001.patch)."
 	printf "    %-15s %s\n" "config [type]" "make defconfig or type (e.g., allnoconfig)."
 	printf "    %-15s %s\n" "rootfs" "Creates/packages minimal Debian Initramfs (debootstrap)."
