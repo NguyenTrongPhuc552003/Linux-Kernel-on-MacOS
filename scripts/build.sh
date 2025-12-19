@@ -16,12 +16,8 @@ fi
 
 # Set default if not loaded
 if [ -z "$TARGET_ARCH" ]; then
-	# Default to arm64 if running on Apple Silicon, otherwise x86_64
-	if [[ "$(uname -m)" == "arm64" ]]; then
-		TARGET_ARCH="arm64"
-	else
-		TARGET_ARCH="x86_64"
-	fi
+	# Default to arm64 if running on Apple Silicon, support only arm64 platform for now
+	TARGET_ARCH="arm64"
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -32,7 +28,7 @@ set_arch() {
 
 	if [[ -z "$new_arch" ]]; then
 		echo -e "  [${YELLOW}INFO${NC}] Current ARCH is: ${GREEN}${TARGET_ARCH}${NC}"
-		echo -e "  [${YELLOW}INFO${NC}] Usage: arch <arm64|x86_64|...>"
+		echo -e "  [${YELLOW}INFO${NC}] Usage: arch <riscv|arm64|...>"
 		return 0
 	fi
 
