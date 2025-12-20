@@ -91,6 +91,13 @@ clean)
 	;;
 
 # --------------------------------------------------
+# Module Management
+# --------------------------------------------------
+module)
+	run_module "$@"
+	;;
+
+# --------------------------------------------------
 # Debugger Execution
 # --------------------------------------------------
 qemu)
@@ -138,6 +145,9 @@ help)
 	printf "    %-${HELPER_LENGTH}s %s\n" "rootfs" "Creates/packages minimal Debian Initramfs (debootstrap)."
 	printf "    %-${HELPER_LENGTH}s %s\n" "build [jb] [tg]" "make -j[cores] target (default: Image dtbs modules)."
 	printf "    %-${HELPER_LENGTH}s %s\n" "clean" "make distclean."
+	echo
+	printf "  ${GREEN}Module Management${NC}\n"
+	printf "    %-${HELPER_LENGTH}s %s\n" "module [km] [op]" "Manage kernel modules (build, insmod, rmmod, status)."
 	echo
 	printf "  ${GREEN}Debugger Execution${NC}\n"
 	printf "    %-${HELPER_LENGTH}s %s\n" "qemu [-d]" "Runs or debugs the built kernel in QEMU (using current ARCH)."
