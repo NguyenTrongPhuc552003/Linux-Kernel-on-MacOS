@@ -11,6 +11,7 @@ set -e
 # ──────────────────────────────────────────────────────────────────────────────
 # Define the script directory relative to this file
 export SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export HELPER_LENGTH=16
 
 # Load environment variables, paths, and all function scripts
 source "${SCRIPT_DIR}/common.env"
@@ -64,7 +65,7 @@ delete)
 	;;
 
 # --------------------------------------------------
-# Build
+# Target Setup
 # --------------------------------------------------
 arch)
 	set_arch "$1"
@@ -75,6 +76,10 @@ patch)
 config)
 	run_config "$1"
 	;;
+
+# --------------------------------------------------
+# Build Pipeline
+# --------------------------------------------------
 rootfs)
 	create_disk_image
 	;;
@@ -84,40 +89,58 @@ build)
 clean)
 	run_clean
 	;;
+
+# --------------------------------------------------
+# Debugger Execution
+# --------------------------------------------------
 qemu)
 	run_qemu "$@"
 	;;
 
 # --------------------------------------------------
-# Help / Error
+# Help Menu
 # --------------------------------------------------
-help | *)
+help)
+	echo "This is the kernel build and management helper script. Usage:"
+	echo
+	printf "  ${GREEN}Core Lifecycle${NC}\n"
+	printf "    %-${HELPER_LENGTH}s %s\n" "mount" "Mounts image (or creates) and ensures kernel repo exists."
+	printf "    %-${HELPER_LENGTH}s %s\n" "unmount/exit" "Unmounts the sparse image."
+	printf "    %-${HELPER_LENGTH}s %s\n" "(no arg)" "Alias for 'mount'."
+	echo
+	printf "  ${GREEN}Environment & Repo${NC}\n"
+	printf "    %-${HELPER_LENGTH}s %s\n" "doctor" "Checks dependencies and required headers."
+	printf "    %-${HELPER_LENGTH}s %s\n" "status" "git status."
+	printf "    %-${HELPER_LENGTH}s %s\n" "update" "git fetch + hard reset to origin/\$BASE_BRANCH."
+	printf "    %-${HELPER_LENGTH}s %s\n" "reset" "git reset --hard origin/\$BASE_BRANCH (no fetch)."
+	printf "    %-${HELPER_LENGTH}s %s\n" "reinit" "Deletes kernel source and clones fresh repo."
+	printf "    %-${HELPER_LENGTH}s %s\n" "branch <name>" "Checkout branch/tag (creates new branch if missing)."
+	printf "    %-${HELPER_LENGTH}s %s\n" "delete <name>" "Safely deletes a local branch."
+	echo
+	printf "  ${GREEN}Target Setup${NC}\n"
+	printf "    %-${HELPER_LENGTH}s %s\n" "arch <target>" "Sets target architecture (e.g., riscv, arm64)."
+	printf "    %-${HELPER_LENGTH}s %s\n" "patch <file>" "Applies a patch file (e.g., patches/v6.18/0001.patch)."
+	printf "    %-${HELPER_LENGTH}s %s\n" "config [cf]" "make defconfig or type (e.g., allnoconfig)."
+	echo
+	printf "  ${GREEN}Build Pipeline${NC}\n"
+	printf "    %-${HELPER_LENGTH}s %s\n" "rootfs" "Creates/packages minimal Debian Initramfs (debootstrap)."
+	printf "    %-${HELPER_LENGTH}s %s\n" "build [jb] [tg]" "make -j[cores] target (default: Image dtbs modules)."
+	printf "    %-${HELPER_LENGTH}s %s\n" "clean" "make distclean."
+	echo
+	printf "  ${GREEN}Debugger Execution${NC}\n"
+	printf "    %-${HELPER_LENGTH}s %s\n" "qemu [-d]" "Runs or debugs the built kernel in QEMU (using current ARCH)."
+	echo
+	printf "  ${GREEN}Help Menu${NC}\n"
+	printf "    %-${HELPER_LENGTH}s %s\n" "help" "Displays this help menu."
+	;;
+
+# --------------------------------------------------
+# Unknown Command
+# --------------------------------------------------
+*)
 	echo "Usage: ./run.sh [command] [args]"
 	echo "Run './run.sh help' for a list of commands."
 	echo
-	echo "Available commands (source functions from scripts/):"
-	echo
-	printf "  ${GREEN}Core Lifecycle${NC}\n"
-	printf "    %-15s %s\n" "mount" "Mounts image (or creates) and ensures kernel repo exists."
-	printf "    %-15s %s\n" "unmount/exit" "Unmounts the sparse image."
-	printf "    %-15s %s\n" "(no arg)" "Alias for 'mount'."
-	echo
-	printf "  ${GREEN}Environment & Repo${NC}\n"
-	printf "    %-15s %s\n" "doctor" "Checks dependencies and required headers."
-	printf "    %-15s %s\n" "status" "git status."
-	printf "    %-15s %s\n" "update" "git fetch + hard reset to origin/\$BASE_BRANCH."
-	printf "    %-15s %s\n" "reset" "git reset --hard origin/\$BASE_BRANCH (no fetch)."
-	printf "    %-15s %s\n" "reinit" "Deletes kernel source and clones fresh repo."
-	printf "    %-15s %s\n" "branch <name>" "Checkout branch/tag (creates new branch if missing)."
-	printf "    %-15s %s\n" "delete <name>" "Safely deletes a local branch."
-	echo
-	printf "  ${GREEN}Build Pipeline${NC}\n"
-	printf "    %-15s %s\n" "arch <target>" "Sets target architecture (e.g., riscv, arm64)."
-	printf "    %-15s %s\n" "patch <file>" "Applies a patch file (e.g., patches/v6.18/0001.patch)."
-	printf "    %-15s %s\n" "config [type]" "make defconfig or type (e.g., allnoconfig)."
-	printf "    %-15s %s\n" "rootfs" "Creates/packages minimal Debian Initramfs (debootstrap)."
-	printf "    %-15s %s\n" "build [jb] [tg]" "make -j[cores] target (default: Image dtbs modules)."
-	printf "    %-15s %s\n" "clean" "make distclean."
-	printf "    %-15s %s\n" "qemu [-d]" "Runs or debugs the built kernel in QEMU (using current ARCH)."
 	;;
+
 esac
