@@ -135,7 +135,8 @@ run_module() {
 		-f | --info) action="info" ;;
 		-h | --help) action="help" ;;
 		*)
-			echo "Unknown option: $1"
+			echo -e "  [${RED}ERROR${NC}] Unknown argument: $1"
+			echo "  Use './run.sh module -h' for help."
 			return 1
 			;;
 		esac
@@ -155,6 +156,12 @@ Options:
   -n, --reset    Clear all INS/REM queues
   -s, --status   Show module build and queue dashboard
   -f, --info     Display module metadata from source macros
+  -h, --help     Show this help message
+
+Examples:
+  ./run.sh module               Build all modules
+  ./run.sh module mymodule -i   Queue 'mymodule' for insmod
+  ./run.sh module -s            Show status of all modules
 EOF
 		;;
 
