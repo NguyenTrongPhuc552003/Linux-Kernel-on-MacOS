@@ -99,13 +99,16 @@ _execute_qemu() {
 	local GDB_FLAGS="$1"    # e.g., "-s -S" for gdb
 	local VERBOSE_MODE="$2" # if "verbose", skip -nographic
 
+	# Architecture-specific setup
 	_configure_qemu_for_arch
+
+	# Prepare guest module orchestrator
 	_prepare_guest_modules
 
 	local KERNEL_IMAGE="${KERNEL_DIR}/arch/${TARGET_ARCH}/boot/Image"
 	local VMLINUX="${KERNEL_DIR}/vmlinux"
 
-	# Validation
+	# Minimum components validation
 	if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
 		echo -e "  [${RED}ERROR${NC}] $QEMU_BIN not found. Install QEMU via Homebrew: brew install qemu" >&2
 		exit 1
