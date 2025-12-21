@@ -29,9 +29,10 @@ _save_mod_state() {
 # ─────────────────────────────────────────────────────────────
 # 1. Build Logic (-b / default)
 # ─────────────────────────────────────────────────────────────
-_build_module_item() {
+_module_item_action() {
 	local mod_name="$1"
 	local mod_path="${MODULES_DIR}/${mod_name}"
+	local mod_target="${2:-modules}" # Default target is 'modules'
 
 	[ ! -d "$mod_path" ] && {
 		echo -e "  [${RED}ERR${NC}] Module directory not found: $mod_name"
@@ -45,9 +46,10 @@ _build_module_item() {
 	make -C "$KERNEL_DIR" \
 		M="$mod_path" \
 		ARCH="$TARGET_ARCH" \
+		LLVM=1 \
 		CROSS_COMPILE="$CROSS_COMPILE" \
 		HOSTCFLAGS="$HOSTCFLAGS" \
-		modules
+		"$mod_target"
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -149,7 +151,7 @@ EOF
 		MODULE_INS=()
 		MODULE_REM=()
 		_save_mod_state
-		echo "  [${GREEN}OK${NC}] Queues cleared."
+		echo -e "  [${GREEN}OK${NC}] Queues cleared."
 		;;
 	status)
 		_module_status
@@ -165,29 +167,29 @@ EOF
 		local item="${target_mod:-*}"
 		MODULE_INS+=("$item")
 		_save_mod_state
-		echo "  [${GREEN}+${NC}] Queued for insmod: $item"
+		echo -e "  [${GREEN}+${NC}] Queued for insmod: $item"
 		;;
 	rmmod)
 		local item="${target_mod:-*}"
 		MODULE_REM+=("$item")
 		_save_mod_state
-		echo "  [${RED}-${NC}] Queued for rmmod: $item"
+		echo -e "  [${RED}-${NC}] Queued for rmmod: $item"
 		;;
 	clean)
 		if [ -n "$target_mod" ]; then
-			make -C "$KERNEL_DIR" M="${MODULES_DIR}/${target_mod}" ARCH="$TARGET_ARCH" clean
+			_module_item_action "$target_mod" clean
 		else
 			for d in "${MODULES_DIR}"/*/; do
-				make -C "$KERNEL_DIR" M="$d" ARCH="$TARGET_ARCH" clean
+				[ -d "$d" ] && _module_item_action "$(basename "$d")" clean
 			done
 		fi
 		;;
 	build)
 		if [ -n "$target_mod" ]; then
-			_build_module_item "$target_mod"
+			_module_item_action "$target_mod" # Default target is 'modules'
 		else
 			for d in "${MODULES_DIR}"/*/; do
-				[ -d "$d" ] && _build_module_item "$(basename "$d")"
+				[ -d "$d" ] && _module_item_action "$(basename "$d")"
 			done
 		fi
 		;;
