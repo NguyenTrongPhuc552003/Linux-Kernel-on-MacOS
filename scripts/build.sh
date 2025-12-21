@@ -7,7 +7,7 @@
 # ─────────────────────────────────────────────────────────────
 # Path to store the currently configured architecture.
 # We store this outside the kernel source tree so `make distclean` doesn't remove it.
-CONFIG_FILE="${SCRIPT_DIR}/.build_config.env"
+CONFIG_FILE="${SCRIPT_DIR}/build.cfg"
 
 # Load TARGET_ARCH from config file if it exists
 if [ -f "$CONFIG_FILE" ]; then
