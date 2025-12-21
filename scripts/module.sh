@@ -4,7 +4,7 @@
 # Handles building, cleaning, and queuing for QEMU integration.
 
 # Path to persist module queue state
-MOD_CONFIG="${SCRIPT_DIR}/module.cfg"
+MOD_CONFIG="${MODULES_DIR}/module.cfg"
 
 # Load existing state if it exists
 if [ -f "$MOD_CONFIG" ]; then
@@ -24,6 +24,16 @@ _save_mod_state() {
 		echo "MODULE_INS=($(printf "\"%s\" " "${MODULE_INS[@]}"))"
 		echo "MODULE_REM=($(printf "\"%s\" " "${MODULE_REM[@]}"))"
 	} >"$MOD_CONFIG"
+}
+
+# ─────────────────────────────────────────────────────────────
+# Internal: Check if queue contains element
+# ─────────────────────────────────────────────────────────────
+_queue_contains() {
+	local e match="$1"
+	shift
+	for e; do [[ "$e" == "$match" ]] && return 0; done
+	return 1
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -147,15 +157,18 @@ Options:
   -f, --info     Display module metadata from source macros
 EOF
 		;;
+
 	reset)
 		MODULE_INS=()
 		MODULE_REM=()
 		_save_mod_state
 		echo -e "  [${GREEN}OK${NC}] Queues cleared."
 		;;
+
 	status)
 		_module_status
 		;;
+
 	info)
 		[ -z "$target_mod" ] && {
 			echo "Specify a module name."
@@ -163,18 +176,49 @@ EOF
 		}
 		_module_info "$target_mod"
 		;;
+
 	insmod)
 		local item="${target_mod:-*}"
-		MODULE_INS+=("$item")
-		_save_mod_state
-		echo -e "  [${GREEN}+${NC}] Queued for insmod: $item"
+
+		if _queue_contains "$item" "${MODULE_INS[@]}"; then
+			echo -e "  [${YELLOW}!${NC}] $item is already in the insmod queue."
+		else
+			# 1. Add to insmod queue
+			MODULE_INS+=("$item")
+
+			# 2. (Optional) Remove from rmmod queue if it was there
+			local temp_rem=()
+			for m in "${MODULE_REM[@]}"; do
+				[[ "$m" != "$item" ]] && temp_rem+=("$m")
+			done
+			MODULE_REM=("${temp_rem[@]}")
+
+			_save_mod_state
+			echo -e "  [${GREEN}+${NC}] Queued for insmod: $item"
+		fi
 		;;
+
 	rmmod)
 		local item="${target_mod:-*}"
-		MODULE_REM+=("$item")
-		_save_mod_state
-		echo -e "  [${RED}-${NC}] Queued for rmmod: $item"
+
+		if _queue_contains "$item" "${MODULE_REM[@]}"; then
+			echo -e "  [${YELLOW}!${NC}] $item is already in the rmmod queue."
+		else
+			# 1. Add to rmmod queue
+			MODULE_REM+=("$item")
+
+			# 2. (Optional) Remove from insmod queue if it was there
+			local temp_ins=()
+			for m in "${MODULE_INS[@]}"; do
+				[[ "$m" != "$item" ]] && temp_ins+=("$m")
+			done
+			MODULE_INS=("${temp_ins[@]}")
+
+			_save_mod_state
+			echo -e "  [${RED}-${NC}] Queued for rmmod: $item"
+		fi
 		;;
+
 	clean)
 		if [ -n "$target_mod" ]; then
 			_module_item_action "$target_mod" clean
@@ -184,6 +228,7 @@ EOF
 			done
 		fi
 		;;
+
 	build)
 		if [ -n "$target_mod" ]; then
 			_module_item_action "$target_mod" # Default target is 'modules'
@@ -193,5 +238,6 @@ EOF
 			done
 		fi
 		;;
+
 	esac
 }
