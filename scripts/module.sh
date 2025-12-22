@@ -113,6 +113,28 @@ _module_status() {
 }
 
 # ─────────────────────────────────────────────────────────────
+# 4. Kernel Module Header (-p)
+# ─────────────────────────────────────────────────────────────
+# Design: Prepare kernel headers building from linux kernel with modules_prepare target
+_prepare_kernel_headers() {
+	local build_jobs=4
+
+	# Take run_build() function's logic for building headers only
+	ensure_mounted
+	cd "$KERNEL_DIR" || {
+		echo -e "  [${RED}FAIL${NC}] Could not enter KERNEL_DIR."
+		exit 1
+	}
+
+	echo -e "  [${YELLOW}KHEADERS${NC}] Preparing kernel headers for module building..."
+	run_build "$build_jobs" "modules_prepare" || {
+		echo -e "  [${RED}FAIL${NC}] Kernel headers preparation failed."
+		exit 1
+	}
+	echo -e "  [${GREEN}SUCCESS${NC}] Kernel headers are ready."
+}
+
+# ─────────────────────────────────────────────────────────────
 # Main Dispatcher
 # ─────────────────────────────────────────────────────────────
 run_module() {
@@ -133,6 +155,7 @@ run_module() {
 		-n | --reset) action="reset" ;;
 		-s | --status) action="status" ;;
 		-f | --info) action="info" ;;
+		-e | --headers) action="headers" ;;
 		-h | --help) action="help" ;;
 		*)
 			echo -e "  [${RED}ERROR${NC}] Unknown argument: $1"
@@ -156,6 +179,7 @@ Options:
   -n, --reset    Clear all INS/REM queues
   -s, --status   Show module build and queue dashboard
   -f, --info     Display module metadata from source macros
+  -e, --headers  Prepare kernel headers for module building
   -h, --help     Show this help message
 
 Examples:
@@ -182,6 +206,10 @@ EOF
 			return 1
 		}
 		_module_info "$target_mod"
+		;;
+
+	headers)
+		_prepare_kernel_headers
 		;;
 
 	insmod)
