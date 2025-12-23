@@ -253,16 +253,22 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
 
 - [x] **v1.0.0**: Initial native kernel build success.
 - [x] **v1.1.0**: Modular scripts, automated debootstrap, and stable Initramfs boot.
-- [x] **v2.0.0**: **dev/rootfs Release** 
+- [x] **v2.0.0**: **dev/rootfs Release**
   Persistent Storage Mode — Full transition to EXT4 disk images, one-time second-stage debootstrap via smart `/init`, faster and stable booting.
 
-- [ ] **v2.1.0**: Professional QEMU + GDB Integration **(soon)**  
+- [x] **v2.1.0**: Professional QEMU + GDB Integration
   One-command debugging experience via `./run.sh qemu -d`:
   - Automatic cross-toolchain GDB selection (riscv64-elf-gdb / aarch64-elf-gdb / arm-none-eabi-gdb)
   - Seamless macOS Terminal integration: GDB in foreground, QEMU in background window
   - Proper debug symbol validation (`CONFIG_DEBUG_KERNEL` / `CONFIG_DEBUG_INFO_*`)
   - Clean shutdown and resource management
   - Architecture-aware and user-friendly workflow
+
+- [ ] **v3.0.0**: Big changes about project structure coming!
+   - The "Class" Template (Standardization)
+   - Centralized State Management
+     - Instead of scattering .cfg files, we introduce Core/StateManager.sh.
+   - Configuration Hierarchy (Polymorphism)
 
 ## Credits & Inspiration
 
