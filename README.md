@@ -87,6 +87,81 @@ This lets you build v6.18 ARM64 natively—faster clean builds than on Linux hos
 
 Switch to RISC-V: `./run.sh arch riscv && ./run.sh config && ./run.sh build`.
 
+## Kernel Modules in QEMU
+
+You can take the pre-example from modules directory to test module loading or create your own modules. To load modules into the guest kernel at boot time, follow these steps:
+
+1. **Prepare Kernel Headers (IMPORTANT)**:
+
+   ```bash
+   ./run.sh module -e  # or ./run.sh module --headers
+   ```
+
+2. **Compile Modules**:
+
+   ```bash
+   ./run.sh module <module_name>  # if nothing specified, builds all modules in modules/
+   ```
+
+3. **Insert Modules to Queues**:
+
+   ```bash
+   ./run.sh module <module_name> -i  # if nothing specified, inserts all compiled modules
+   ```
+
+4. **Test it in QEMU**:
+
+   ```bash
+   ./run.sh qemu  # Boot the kernel with modules inserted at startup
+   ```
+
+   You should see the following lines in the QEMU console output:
+
+   ```bash
+   [  305.493398] hello_world: loading out-of-tree module taints kernel.
+   [  305.499611]   [HELLO] Module loaded successfully!
+   [  305.499720]   [HELLO] Hello from the macOS-built kernel module!
+   ```
+
+5. **Same with unloading modules**:
+
+   ```bash
+   ./run.sh module <module_name> -r  # if nothing specified, removes all inserted modules from queues
+   ./run.sh qemu  # Boot the kernel with modules removed at startup
+   ```
+
+   You should also see the following lines in the QEMU console output:
+
+   ```bash
+   [ 5740.214740]   [HELLO] Module unloaded. Goodbye!
+   ```
+
+6. **Additional Options**:
+
+- To clean compiled modules:
+
+  ```bash
+  ./run.sh module <module_name> -c  # if nothing specified, cleans all compiled modules
+  ```
+
+- To see the status of modules:
+
+  ```bash
+  ./run.sh module -s  # or ./run.sh module --status
+  ```
+
+- To see help information about module commands:
+
+  ```bash
+  ./run.sh module -h  # or ./run.sh module --help
+  ```
+
+Notes:
+
+- Ensure that the kernel module's main source file is named `<module_name>.c` and is located in the `modules/<module_name>/` directory. You can refer to the provided `hello_world` module as an example.
+
+- **(Optional)** You should also make sure that the kernel module's information (like `MODULE_LICENSE`, `MODULE_AUTHOR`, etc.) is correctly defined in the end of the module source file. Please refer to the `hello_world` module for guidance.
+
 ## Key Workarounds Explained
 
 ### 1. The v6.18 `copy_file_range()` Incompatibility
@@ -117,6 +192,14 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
 - **macOS side**: Darwin kernel (XNU) uses `copyfile()` libcall, which invokes kernel `vfs_copyfile_with_meta()` for CoW/reflink on APFS/HFS+. No direct syscall equivalent—`copyfile()` is the userland API, leveraging kernel vnode ops for zero-copy.
 - **Why patch?**: Direct mapping keeps performance (CoW on macOS ≈ reflink on Linux). Fallback to read/write ensures portability. This bridges Darwin's Mach/BSD hybrid to Linux's monolithic VFS without disabling features.
 
+### 4. Kernel Module Headers on macOS
+
+- **Problem**: We have no any official Homebrew package like `linux-headers` for macOS to compile out-of-tree kernel modules. That leads to missing headers while building modules from modules directory like pre-exmaple `hello_world` module.
+- **Solution**:
+  - We can resolve this by preparing kernel headers using `./run.sh module -e` command. This command will make a linux kernel build with `modules_prepare` target to generate all necessary headers for building out-of-tree kernel modules. The generated headers will be located at `linux/` directory.
+  - Another same way is to run `./run.sh build <jobs> modules_prepare` command after configuring the kernel. This will also generate all necessary headers for building out-of-tree kernel modules.
+- **Usage**: After preparing headers, you can compile your modules using `./run.sh module <module_name>` command normally.
+
 ## Repo Structure
 
 ```bash
@@ -127,6 +210,8 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
 ├── img.sparseimage     # 20GB case-sensitive APFS volume (hdiutil mount)
 ├── libraries/          # Shims: byteswap.h (Clang builtins), elf.h (libelf compat)
 │   └── asm/            # Symlinks to kernel uapi/asm-generic (bitsperlong.h, int-ll64.h, posix_types.h, types.h)
+├── modules/            # Sample kernel modules (hello_world/)
+│   └── hello_world/
 ├── patches/            # Versioned patches
 │   └── v6.18/
 │       └── *.patch     # Zero-copy workaround
@@ -136,6 +221,7 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
 │   ├── build.sh        # Handles ARCH persistence, make config, make build, and make clean.
 │   ├── doctor.sh       # Handles environment/dependency checks.
 │   ├── image.sh        # Handles sparse image mounting and unmounting.
+│   ├── module.sh       # Handles kernel module header prep, build, insert, remove, clean, and status.
 │   ├── patch.sh        # Handles git apply --3way for patch files.
 │   ├── repo.sh         # Handles git status, clone, update, reset, and reinitialize.
 │   ├── qemu.sh         # Launching QEMU with built disk.img and kernel Image
