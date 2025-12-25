@@ -96,8 +96,8 @@ _prepare_guest_modules() {
 # 3. Core execution logic
 # ─────────────────────────────────────────────────────────────
 _execute_qemu() {
-	local GDB_FLAGS="$1"    # e.g., "-s -S" for gdb
-	local VERBOSE_MODE="$2" # if "verbose", skip -nographic
+	local GDB_FLAGS="$1"    # e.g., "-s -S"
+	local VERBOSE_MODE="$2" # "yes" → graphical mode
 
 	# Architecture-specific setup
 	_configure_qemu_for_arch
@@ -105,36 +105,32 @@ _execute_qemu() {
 	# Prepare guest module orchestrator
 	_prepare_guest_modules
 
-	local KERNEL_IMAGE="${KERNEL_DIR}/arch/${TARGET_ARCH}/boot/Image"
-	local VMLINUX="${KERNEL_DIR}/vmlinux"
+	local kernel="${KERNEL_DIR}/arch/${TARGET_ARCH}/boot/Image"
+	local vmlinux="${KERNEL_DIR}/vmlinux"
 
-	# Minimum components validation
-	if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
-		echo -e "  [${RED}ERROR${NC}] $QEMU_BIN not found. Install QEMU via Homebrew: brew install qemu" >&2
+	# Basic validation
+	command -v "$QEMU_BIN" >/dev/null || {
+		echo -e "  [${RED}ERROR${NC}] $QEMU_BIN not found (brew install qemu)"
 		exit 1
-	fi
-
-	if [ ! -f "$KERNEL_IMAGE" ]; then
-		echo -e "  [${RED}ERROR${NC}] Kernel Image not found: $KERNEL_IMAGE"
-		echo "  Run './run.sh build' first."
+	}
+	[[ -f "$kernel" ]] || {
+		echo -e "  [${RED}ERROR${NC}] Kernel not found: $kernel (run './run.sh build')"
 		exit 1
-	fi
-
-	if [ ! -f "$DISK_IMAGE" ]; then
-		echo -e "  [${RED}ERROR${NC}] Disk image not found: $DISK_IMAGE"
-		echo "  Run './run.sh rootfs' first to create the root filesystem."
+	}
+	[[ -f "$DISK_IMAGE" ]] || {
+		echo -e "  [${RED}ERROR${NC}] Disk image missing: $DISK_IMAGE (run './run.sh rootfs')"
 		exit 1
-	fi
+	}
 
-	echo -e "  [${YELLOW}QEMU${NC}] Starting ${GREEN}${TARGET_ARCH}${NC} emulation with disk-based rootfs..."
-	[ -n "$GDB_FLAGS" ] && echo -e "  [${YELLOW}DEBUG${NC}] GDB stub enabled. Connect using port ${QEMU_GDB_PORT}"
+	echo -e "  [${YELLOW}QEMU${NC}] Starting ${GREEN}${TARGET_ARCH}${NC} emulation..."
+	[[ -n "$GDB_FLAGS" ]] && echo -e "  [${YELLOW}DEBUG${NC}] GDB stub active on port ${QEMU_GDB_PORT}"
 
-	# Base command
-	local QEMU_CMD=(
+	# Base QEMU command
+	local cmd=(
 		"$QEMU_BIN"
 		-m "$QEMU_MEMORY"
 		-smp "$QEMU_SMP"
-		-kernel "$KERNEL_IMAGE"
+		-kernel "$kernel"
 		$QEMU_BIOS
 		-machine "$QEMU_MACHINE"
 		${QEMU_CPU:+-cpu "$QEMU_CPU"}
@@ -142,36 +138,41 @@ _execute_qemu() {
 		# Disk: virtio-blk with our ext4 image
 		-drive file="${DISK_IMAGE}",format=raw,if=virtio
 
-		# Basic GPU (virtio-gpu-pci)
-		-device virtio-gpu-pci
-
 		# Networking: user-mode + SSH forwarding (host:2222 -> guest:22)
 		-device virtio-net-device,netdev=net0
 		-netdev user,id=net0,hostfwd=tcp::2222-:22
 
-		# Serial console
-		-serial mon:stdio
-
 		# Sharing Setup for Kernel Modules
-		-fsdev "local,id=moddev,path=${MODULES_DIR},security_model=none"
-		-device "virtio-9p-pci,fsdev=moddev,mount_tag=modules_mount"
+		-fsdev local,id=moddev,path="${MODULES_DIR}",security_model=none
+		-device virtio-9p-pci,fsdev=moddev,mount_tag=modules_mount
 	)
 
-	# Graphics mode
-	if [ "$VERBOSE_MODE" != "yes" ]; then
-		QEMU_CMD+=(-nographic)
+	# Console & display mode
+	local append="root=/dev/vda rw init=/init earlycon"
+	if [ "$VERBOSE_MODE" = "yes" ]; then
+		cmd+=(
+			-display cocoa
+			-device virtio-gpu-pci
+			-device virtio-keyboard-pci
+			-device virtio-mouse-pci
+		)
+		# Graphical behavior: send output to new window (tty0)
+		append+=" console=tty0"
+	else
+		cmd+=(
+			-nographic
+			-serial mon:stdio
+		)
+		# Default behavior: send output only to serial
+		append+=" console=${QEMU_CONSOLE}"
 	fi
 
-	# GDB support
-	[ -n "$GDB_FLAGS" ] && QEMU_CMD+=($GDB_FLAGS)
+	cmd+=(-append "$append")
+	[[ -n "$GDB_FLAGS" ]] && cmd+=($GDB_FLAGS) # Add GDB flags if any
 
-	# Kernel command line: critical for disk boot
-	local KERNEL_CMDLINE="console=${QEMU_CONSOLE} root=/dev/vda rw init=/init earlycon"
-	QEMU_CMD+=(-append "$KERNEL_CMDLINE")
-
-	# Show and execute
-	echo -e "  [${YELLOW}CMD${NC}] ${QEMU_CMD[*]}"
-	"${QEMU_CMD[@]}"
+	# Execute
+	echo -e "  [${YELLOW}CMD${NC}] ${cmd[*]}"
+	"${cmd[@]}"
 }
 
 # ─────────────────────────────────────────────────────────────
