@@ -57,6 +57,14 @@ run_config() {
 	# Execute make command with required environment variables
 	# We use LLVM=1 and the cross-compiler prefix
 	if make ARCH="$TARGET_ARCH" LLVM=1 CROSS_COMPILE="$CROSS_COMPILE" "$config_type"; then
+		if [ "$config_type" = "kvm_guest.config" ]; then
+			# Enable KVM guest support in .config
+			"$KERNEL_DIR/scripts/config" --file .config \
+				--enable CONFIG_DRM \
+				--enable CONFIG_DRM_VIRTIO_GPU \
+				--enable CONFIG_FB \
+				--enable CONFIG_FRAMEBUFFER_CONSOLE
+		fi
 		echo -e "  [${GREEN}SUCCESS${NC}] Configuration complete."
 	else
 		echo -e "  [${RED}FAIL${NC}] Configuration failed. Check 'make ${config_type}' output."
