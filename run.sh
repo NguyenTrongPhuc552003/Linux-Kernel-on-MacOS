@@ -10,7 +10,7 @@ set -e
 # 1. Setup Environment
 # ──────────────────────────────────────────────────────────────────────────────
 # Local definitions
-export HELPER_LENGTH=16
+HELPER_LENGTH=16
 
 # Load environment variables, paths, and all function scripts
 source "./common.env"
