@@ -48,23 +48,45 @@ _update_queue() {
 
 	# 1. Expand targets: if empty or "*", find all directories with a Makefile
 	if [ -z "$target" ] || [ "$target" = "*" ]; then
-		for d in "${MODULES_DIR}"/*/; do [ -f "${d}Makefile" ] && targets+=("$(basename "$d")"); done
+		for d in "${MODULES_DIR}"/*/; do
+			[ -f "${d}Makefile" ] && targets+=("$(basename "$d")")
+		done
 	else
 		targets=("$target")
 	fi
 
 	for item in "${targets[@]}"; do
-		# Pointers to simplify logic: "primary" is the queue we add to, "secondary" is the one we remove from
+		local mod_path="${MODULES_DIR}/${item}"
+		local ko_file="${mod_path}/${item}.ko"
+
 		if [ "$mode" = "insmod" ]; then
-			_queue_contains "$item" "${MODULE_INS[@]}" && continue
+			# Critical check: .ko must exist to queue for insmod
+			if [ ! -f "$ko_file" ]; then
+				echo -e "  [${RED}SKIP${NC}] Cannot queue '$item' for insmod: .ko file not found"
+				echo "  → Run './run.sh module $item' to build it first."
+				continue
+			fi
+
+			if _queue_contains "$item" "${MODULE_INS[@]}"; then
+				echo -e "  [${YELLOW}INFO${NC}] Already queued for insmod: $item"
+				continue
+			fi
+
 			MODULE_INS+=("$item")
+			# Remove from REM queue if present
 			local tmp=()
 			for m in "${MODULE_REM[@]}"; do [[ "$m" != "$item" ]] && tmp+=("$m"); done
 			MODULE_REM=("${tmp[@]}")
 			echo -e "  [${GREEN}+${NC}] Queued for insmod: $item"
-		else
-			_queue_contains "$item" "${MODULE_REM[@]}" && continue
+
+		else # rmmod mode
+			if _queue_contains "$item" "${MODULE_REM[@]}"; then
+				echo -e "  [${YELLOW}INFO${NC}] Already queued for rmmod: $item"
+				continue
+			fi
+
 			MODULE_REM+=("$item")
+			# Remove from INS queue if present
 			local tmp=()
 			for m in "${MODULE_INS[@]}"; do [[ "$m" != "$item" ]] && tmp+=("$m"); done
 			MODULE_INS=("${tmp[@]}")
