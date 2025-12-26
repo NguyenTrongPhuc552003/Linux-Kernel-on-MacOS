@@ -1,3 +1,39 @@
+# ─────────────────────────────────────────────────────────────
+# 1. Python & Environment
+# ─────────────────────────────────────────────────────────────
+# Python Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+.venv/
+venv/
+env/
+
+# Distribution / Packaging
+build/
+dist/
+*.egg-info/
+
+# ─────────────────────────────────────────────────────────────
+# 2. Project State & Runtime
+# ─────────────────────────────────────────────────────────────
+# Ignore all runtime state inside var/state
+var/state/*
+# (Optional) Keep the directory structure if you add a .gitkeep later
+!var/state/.gitkeep
+
+# macOS System Files
+.DS_Store
+
+# IDE Settings (VS Code, JetBrains)
+.vscode/
+.idea/
+
+# ─────────────────────────────────────────────────────────────
+# 3. Kernel & Build Artifacts (Your original rules)
+# ─────────────────────────────────────────────────────────────
 # Allocated linux kernel workspace
 *.sparseimage
 
@@ -12,6 +48,8 @@
 *.order
 *.cmd
 *.tmp_versions/
+modules.builtin
+modules.order
 
 # Auto-generated kernel module scripts
 guesync.sh

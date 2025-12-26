@@ -1,0 +1,9 @@
+# Project Dependencies (Currently empty/none needed for core logic)
+# Add things here later if needed, e.g.:
+# rich
+# pyyaml
+
+# Development Tools (Recommended)
+black
+flake8
+mypy

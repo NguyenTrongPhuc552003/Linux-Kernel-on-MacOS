@@ -65,13 +65,26 @@ unmount_image() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# 3. Guard: Ensure Mounted
-# Use this at the start of other scripts (repo.sh, build.sh)
+# 3. CLI Dispatcher
 # ─────────────────────────────────────────────────────────────
-ensure_mounted() {
-	if ! _is_mounted; then
-		echo -e "  [${RED}ERROR${NC}] Kernel volume not mounted."
-		echo "  Run './run.sh' (no args) or './run.sh mount' first."
+case "$1" in
+mount)
+	mount_image
+	;;
+unmount)
+	unmount_image
+	;;
+check)
+	if _is_mounted; then
+		echo "mounted"
+		exit 0
+	else
+		echo "unmounted"
 		exit 1
 	fi
-}
+	;;
+*)
+	echo "Usage: $0 {mount|unmount|check}"
+	exit 1
+	;;
+esac
