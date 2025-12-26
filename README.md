@@ -249,27 +249,6 @@ export HOSTCFLAGS="-I${MACOS_HEADERS} -I${LIBELF_INCLUDE} -D_UUID_T -D__GETHOSTU
 - **Support policy:** This project is intended for Linux v6.x (modern v6 series) and later. We recommend targeting v6.13+ (the trees tested with included shims and patches). Older pre-v6.13 tags (especially early v6.0–v6.12) may require more extensive header shims or fixes and are not officially supported by this repository.
 - **Manual alternative:** If you prefer to manage headers yourself, copy the appropriate files from the kernel source (for example, `include/uapi/asm-generic/types.h` or the `asm-generic/posix_types.h` equivalents) into your `libraries/` directory.
 
-## Roadmap
-
-- [x] **v1.0.0**: Initial native kernel build success.
-- [x] **v1.1.0**: Modular scripts, automated debootstrap, and stable Initramfs boot.
-- [x] **v2.0.0**: **dev/rootfs Release**
-  Persistent Storage Mode — Full transition to EXT4 disk images, one-time second-stage debootstrap via smart `/init`, faster and stable booting.
-
-- [x] **v2.1.0**: Professional QEMU + GDB Integration
-  One-command debugging experience via `./run.sh qemu -d`:
-  - Automatic cross-toolchain GDB selection (riscv64-elf-gdb / aarch64-elf-gdb / arm-none-eabi-gdb)
-  - Seamless macOS Terminal integration: GDB in foreground, QEMU in background window
-  - Proper debug symbol validation (`CONFIG_DEBUG_KERNEL` / `CONFIG_DEBUG_INFO_*`)
-  - Clean shutdown and resource management
-  - Architecture-aware and user-friendly workflow
-
-- [ ] **v3.0.0**: Big changes about project structure coming!
-   - The "Class" Template (Standardization)
-   - Centralized State Management
-     - Instead of scattering .cfg files, we introduce Core/StateManager.sh.
-   - Configuration Hierarchy (Polymorphism)
-
 ## Credits & Inspiration
 
 - **Original Tutorial**: [Building Linux on macOS Natively](https://seiya.me/blog/building-linux-on-macos-natively) by Seiya Suzuki—fixed v6.17 issues (old make, sed, headers). Inspired our v6.18 extensions.
