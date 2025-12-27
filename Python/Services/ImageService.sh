@@ -2,6 +2,8 @@
 # scripts/image.sh
 # Handles the lifecycle of the APFS sparse image (Create, Mount, Unmount).
 
+source "$(dirname "$0")/EnvironmentService.sh"
+
 # ─────────────────────────────────────────────────────────────
 # Internal Helper: Check mount status
 # ─────────────────────────────────────────────────────────────

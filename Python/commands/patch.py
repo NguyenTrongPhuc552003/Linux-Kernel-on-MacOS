@@ -2,7 +2,6 @@ import sys
 import os
 from .base import BaseCommand
 from ..utils import ServiceRunner
-from ..config import Config
 
 
 class PatchCommand(BaseCommand):

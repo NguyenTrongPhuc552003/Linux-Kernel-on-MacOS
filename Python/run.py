@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import sys
 import argparse
-import os
 
 # Import All Commands
 from .commands.build import BuildCommand

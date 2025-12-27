@@ -6,8 +6,8 @@ from ..utils import ServiceRunner
 from ..config import Config
 from ..managers.module_state import ModuleState
 from ..strategies.riscv import RiscVStrategy
-from ..strategies.arm64 import Arm64Strategy
 from ..strategies.arm import ArmStrategy
+from ..strategies.arm64 import Arm64Strategy
 from ..ui import UI
 
 

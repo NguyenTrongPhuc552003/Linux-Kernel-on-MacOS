@@ -1,11 +1,6 @@
 #!/bin/bash
 # Python/main.sh
 
-# Resolve True Path
-REAL_SCRIPT_PATH=$(python3 -c "import os, sys; print(os.path.realpath(sys.argv[1]))" "$0")
-THIS_DIR="$(dirname "$REAL_SCRIPT_PATH")"
-export PROJECT_ROOT="$(cd "${THIS_DIR}/.." && pwd)"
-
 # Source Environment Services
 source "${PROJECT_ROOT}/Python/Services/EnvironmentService.sh"
 

@@ -1,4 +1,3 @@
-import sys
 from .base import BaseCommand
 from ..utils import ServiceRunner
 
