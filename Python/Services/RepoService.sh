@@ -30,13 +30,20 @@ repo_update() {
 
 	local branch_name=$(git branch --show-current)
 	if [ -z "$branch_name" ]; then
-		echo "  [ERROR] You are in a detached HEAD state. Cannot pull."
-		echo "  Checkout a branch first: km repo branch master"
-		exit 1
+		echo "  [GIT] Detached HEAD. Fetching all..."
+		git fetch --all
+		return
 	fi
 
-	echo "  [GIT] Pulling latest changes for $branch_name..."
-	git pull origin "$branch_name"
+	# Handle tag-based branches
+	if [[ "$branch_name" == tag-* ]]; then
+		echo "  [GIT] Current branch '$branch_name' is based on a tag."
+		echo "  [GIT] Tags are static. Fetching remote updates only..."
+		git fetch --tags origin
+	else
+		echo "  [GIT] Pulling latest changes for $branch_name..."
+		git pull origin "$branch_name"
+	fi
 }
 
 repo_reset() {

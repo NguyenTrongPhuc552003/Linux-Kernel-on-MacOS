@@ -26,6 +26,8 @@ class ModuleState:
         return {"install": [], "remove": []}
 
     def _save(self):
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
         with open(self.state_file, "w") as f:
             json.dump(self.data, f, indent=4)
 
@@ -44,7 +46,8 @@ class ModuleState:
                 self.data["install"].remove(module_name)
             self._save()
 
-    def clear_queue(self):
+    def clear(self):
+        """Clears all pending module actions."""
         self.data = {"install": [], "remove": []}
         self._save()
 

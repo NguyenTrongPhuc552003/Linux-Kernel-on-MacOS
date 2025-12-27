@@ -4,13 +4,14 @@ from .base import BaseCommand
 from ..utils import ServiceRunner
 from ..config import Config
 from ..strategies.riscv import RiscVStrategy
+from ..strategies.arm import ArmStrategy
 from ..strategies.arm64 import Arm64Strategy
 
 
 class BuildCommand(BaseCommand):
     def __init__(self):
         # Register available strategies
-        self.strategies = {"riscv": RiscVStrategy(), "arm64": Arm64Strategy()}
+        self.strategies = {"riscv": RiscVStrategy(), "arm": ArmStrategy(), "arm64": Arm64Strategy()}
 
     @property
     def name(self):
