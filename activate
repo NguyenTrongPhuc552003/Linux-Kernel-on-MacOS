@@ -1,0 +1,29 @@
+# Source this file to set up the environment
+# Usage: source activate
+
+# 1. Get the absolute path of the project root
+if [ -n "$ZSH_VERSION" ]; then
+	PROJECT_ROOT="$(cd "$(dirname "${(%):-%N}")" && pwd)"
+elif [ -n "$BASH_VERSION" ]; then
+	PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+	PROJECT_ROOT="$(pwd)"
+fi
+
+# 2. Setup Python Venv (Auto-bootstrap if missing)
+VENV_DIR="${PROJECT_ROOT}/.venv"
+if [ ! -d "$VENV_DIR" ]; then
+	echo "  [INIT] Creating virtual environment..."
+	python3 -m venv "$VENV_DIR"
+	"$VENV_DIR/bin/pip" install -r "${PROJECT_ROOT}/requirements.txt"
+fi
+
+# 3. Create the 'km' Alias (The most robust method)
+# This forces the shell to run the python script using the venv python directly.
+alias km="'${VENV_DIR}/bin/python3' -m Python.run"
+
+# 4. Export Project Root (Helper for Python scripts)
+export PROJECT_ROOT
+
+echo "  [SUCCESS] Environment activated."
+echo "  [CMD] You can now use 'km' directly."
