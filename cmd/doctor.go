@@ -94,6 +94,11 @@ func runDoctor() error {
 	checkCrossGDB()
 	fmt.Println()
 
+	// Check architecture-specific GCC
+	printStep("Checking cross-compilers...")
+	checkCrossGCC()
+	fmt.Println()
+
 	// Summary
 	if issuesFound == 0 {
 		printSuccess("All checks passed! Environment ready for kernel development.")
@@ -226,6 +231,25 @@ func checkCrossGDB() {
 			fmt.Printf("  ✓ %s (%s)\n", gdb.arch, gdb.bin)
 		} else {
 			fmt.Printf("  ○ %s (%s) - optional\n", gdb.arch, gdb.bin)
+		}
+	}
+}
+
+func checkCrossGCC() {
+	gccs := []struct {
+		arch string
+		bin  string
+	}{
+		{"RISC-V", "riscv64-elf-gcc"},
+		{"ARM64", "aarch64-elf-gcc"},
+		{"ARM32", "arm-none-eabi-gcc"},
+	}
+
+	for _, gcc := range gccs {
+		if checkCommandExists(gcc.bin) {
+			fmt.Printf("  ✓ %s (%s)\n", gcc.arch, gcc.bin)
+		} else {
+			fmt.Printf("  ○ %s (%s) - optional\n", gcc.arch, gcc.bin)
 		}
 	}
 }
