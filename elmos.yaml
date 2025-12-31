@@ -1,0 +1,25 @@
+build:
+    arch: riscv
+    jobs: 12
+    llvm: true
+    crosscompile: llvm-
+image:
+    path: /Users/trongphucnguyen/Documents/kernel-dev/linux/img.sparseimage
+    volumename: kernel-dev
+    size: 20G
+    mountpoint: /Volumes/kernel-dev
+paths:
+    projectroot: /Users/trongphucnguyen/Documents/kernel-dev/linux
+    kerneldir: /Volumes/kernel-dev/linux
+    modulesdir: /Users/trongphucnguyen/Documents/kernel-dev/linux/modules
+    appsdir: /Users/trongphucnguyen/Documents/kernel-dev/linux/apps
+    librariesdir: /Users/trongphucnguyen/Documents/kernel-dev/linux/libraries
+    patchesdir: /Users/trongphucnguyen/Documents/kernel-dev/linux/patches
+    rootfsdir: /Volumes/kernel-dev/rootfs
+    diskimage: /Volumes/kernel-dev/disk.img
+    debianmirror: http://deb.debian.org/debian
+profiles: {}
+qemu:
+    memory: 2G
+    gdbport: 1234
+    smp: 12
