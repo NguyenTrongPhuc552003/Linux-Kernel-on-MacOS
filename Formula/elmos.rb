@@ -4,20 +4,22 @@
 # ELMOS - Embedded Linux on MacOS
 # Homebrew formula for installing elmos CLI tool
 #
-# Usage:
+# Installation:
 #   brew tap NguyenTrongPhuc552003/elmos
 #   brew install elmos
 #
-# Or directly:
-#   brew install NguyenTrongPhuc552003/elmos/elmos
+# Development install (latest from git):
+#   brew install --HEAD elmos
 
 class Elmos < Formula
   desc "Embedded Linux on MacOS - Native kernel build tools"
   homepage "https://github.com/NguyenTrongPhuc552003/elmos"
-  url "https://github.com/NguyenTrongPhuc552003/elmos/archive/refs/tags/v3.0.0.tar.gz"
-  sha256 "REPLACE_WITH_ACTUAL_SHA256_AFTER_RELEASE"
   license "MIT"
+
   head "https://github.com/NguyenTrongPhuc552003/elmos.git", branch: "main"
+  url "https://github.com/NguyenTrongPhuc552003/elmos/archive/refs/tags/v3.0.0.tar.gz"
+  sha256 "8222933d906bdb973dbe4ffabb4a7f7318530a4372e741bbf986b359bc0468fd"
+  version "3.0.0"
 
   depends_on "go" => :build
   depends_on "go-task" => :build
@@ -34,12 +36,16 @@ class Elmos < Formula
   depends_on "fakeroot"
 
   def install
-    # Build with version info
+    # Get version from git
+    version_str = Utils.safe_popen_read("git", "describe", "--tags", "--always", "--dirty").strip
+    commit = Utils.safe_popen_read("git", "rev-parse", "--short", "HEAD").strip
+    build_date = Time.now.utc.iso8601
+
     ldflags = %W[
       -s -w
-      -X github.com/NguyenTrongPhuc552003/elmos/pkg/version.Version=#{version}
-      -X github.com/NguyenTrongPhuc552003/elmos/pkg/version.Commit=#{tap.user}
-      -X github.com/NguyenTrongPhuc552003/elmos/pkg/version.BuildDate=#{time.iso8601}
+      -X github.com/NguyenTrongPhuc552003/elmos/pkg/version.Version=#{version_str}
+      -X github.com/NguyenTrongPhuc552003/elmos/pkg/version.Commit=#{commit}
+      -X github.com/NguyenTrongPhuc552003/elmos/pkg/version.BuildDate=#{build_date}
     ]
 
     system "go", "build", *std_go_args(ldflags:)
@@ -48,8 +54,8 @@ class Elmos < Formula
     generate_completions_from_executable(bin/"elmos", "completion")
 
     # Install supporting files
-    pkgshare.install "libraries"
-    pkgshare.install "patches"
+    pkgshare.install "libraries" if File.directory?("libraries")
+    pkgshare.install "patches" if File.directory?("patches")
   end
 
   def caveats
@@ -58,6 +64,7 @@ class Elmos < Formula
 
       Quick start:
         elmos doctor              # Check dependencies
+        elmos ui                  # Launch interactive TUI
         elmos init                # Initialize workspace
         elmos config set arch arm64
         elmos kernel config
@@ -72,7 +79,7 @@ class Elmos < Formula
   end
 
   test do
-    assert_match version.to_s, shell_output("#{bin}/elmos version")
     assert_match "ELMOS", shell_output("#{bin}/elmos --help")
+    assert_match "Version", shell_output("#{bin}/elmos version")
   end
 end
