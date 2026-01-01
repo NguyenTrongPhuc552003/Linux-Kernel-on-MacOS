@@ -16,13 +16,10 @@ class Elmos < Formula
   homepage "https://github.com/NguyenTrongPhuc552003/elmos"
   license "MIT"
 
-  # HEAD-only formula until first release
-  head "https://github.com/NguyenTrongPhuc552003/elmos.git", branch: "elmos"
-
-  # Uncomment after first release:
-  # url "https://github.com/NguyenTrongPhuc552003/elmos/archive/refs/tags/v3.0.0.tar.gz"
-  # sha256 "REPLACE_WITH_SHA256"
-  # version "3.0.0"
+  head "https://github.com/NguyenTrongPhuc552003/elmos.git", branch: "main"
+  url "https://github.com/NguyenTrongPhuc552003/elmos/archive/refs/tags/v3.0.0.tar.gz"
+  sha256 "8222933d906bdb973dbe4ffabb4a7f7318530a4372e741bbf986b359bc0468fd"
+  version "3.0.0"
 
   depends_on "go" => :build
   depends_on "go-task" => :build

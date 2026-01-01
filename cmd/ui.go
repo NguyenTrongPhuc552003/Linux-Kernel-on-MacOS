@@ -2,7 +2,10 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -14,6 +17,18 @@ import (
 var uiCmd = &cobra.Command{
 	Use:   "ui",
 	Short: "Launch interactive menu (TUI)",
+	Long: `Launch an interactive menu-driven interface for ELMOS.
+
+The TUI provides a split-pane view:
+  - Left panel: Menu navigation
+  - Right panel: Command output and descriptions
+
+Navigation:
+  ↑/k, ↓/j  Move selection
+  Enter     Execute selected action
+  Tab       Toggle category expand/collapse
+  c         Clear output panel
+  q         Quit`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runTUI()
 	},
@@ -23,29 +38,56 @@ func init() {
 	rootCmd.AddCommand(uiCmd)
 }
 
+// runTUI runs the interactive TUI
 func runTUI() error {
 	m := tui.NewMenuModel()
-	p := tea.NewProgram(m)
-	finalModel, err := p.Run()
-	if err != nil {
-		return err
-	}
+	m.SetCommandRunner(executeAction)
 
-	menu, ok := finalModel.(tui.MenuModel)
-	if !ok || menu.Choice() == "" {
-		return nil
-	}
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
-	// Dispatch based on selection
-	choice := menu.Choice()
+	_, err := p.Run()
+	return err
+}
 
+// executeAction runs the action and returns captured output
+func executeAction(choice string) (string, error) {
+	// Capture output
+	var buf bytes.Buffer
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	os.Stderr = w
+
+	// Run in goroutine to capture output
+	done := make(chan error)
+	go func() {
+		defer close(done)
+		done <- runAction(choice)
+	}()
+
+	// Wait for completion
+	err := <-done
+
+	// Restore stdout/stderr
+	w.Close()
+	os.Stdout = oldStdout
+	os.Stderr = oldStderr
+
+	io.Copy(&buf, r)
+
+	return buf.String(), err
+}
+
+// runAction dispatches to the appropriate command handler
+func runAction(choice string) error {
 	printStep("Executing: %s", choice)
 
 	switch choice {
 	case "Doctor (Check Environment)":
 		return runDoctor()
 	case "Init Workspace":
-		// Init command logic
 		if err := runImageMount(); err != nil {
 			return err
 		}
