@@ -26,3 +26,6 @@ module.cfg
 
 # Task cache
 .task/
+
+# User-specific config overrides
+elmos.local.yaml
