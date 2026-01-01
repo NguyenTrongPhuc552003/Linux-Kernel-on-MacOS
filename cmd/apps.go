@@ -48,10 +48,23 @@ var appsNewCmd = &cobra.Command{
 	},
 }
 
+var appsCleanCmd = &cobra.Command{
+	Use:   "clean [name]",
+	Short: "Clean built application binaries",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		name := ""
+		if len(args) > 0 {
+			name = args[0]
+		}
+		return runAppsClean(name)
+	},
+}
+
 func init() {
 	appsCmd.AddCommand(appsBuildCmd)
 	appsCmd.AddCommand(appsListCmd)
 	appsCmd.AddCommand(appsNewCmd)
+	appsCmd.AddCommand(appsCleanCmd)
 
 	// Add apps to root command (initially defined in root.go but adding here for safety)
 	rootCmd.AddCommand(appsCmd)
@@ -148,6 +161,46 @@ func runAppsList() error {
 		fmt.Printf("  %d. %s%s\n", i+1, app, status)
 	}
 
+	return nil
+}
+
+func runAppsClean(name string) error {
+	cfg := ctx.Config
+
+	apps, err := getApps(name)
+	if err != nil {
+		return err
+	}
+
+	if len(apps) == 0 {
+		printInfo("No apps found to clean")
+		return nil
+	}
+
+	for _, appName := range apps {
+		appPath := filepath.Join(cfg.Paths.AppsDir, appName)
+
+		printStep("Cleaning app: %s", appName)
+
+		// Check for Makefile with clean target
+		makefilePath := filepath.Join(appPath, "Makefile")
+		if _, err := os.Stat(makefilePath); err == nil {
+			cmd := exec.Command("make", "-C", appPath, "clean")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				printWarn("make clean failed for %s", appName)
+			}
+		} else {
+			// Just remove the binary
+			binPath := filepath.Join(appPath, appName)
+			if err := os.Remove(binPath); err == nil {
+				printSuccess("Removed: %s", binPath)
+			}
+		}
+	}
+
+	printSuccess("Clean complete")
 	return nil
 }
 
