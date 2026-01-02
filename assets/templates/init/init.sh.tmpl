@@ -1,0 +1,37 @@
+#!/bin/sh
+# elmos init script - {{.Version}}
+
+echo "Booting Debian root filesystem..."
+
+# Mount essential filesystems
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+
+# Create pts
+mkdir -p /dev/pts
+mount -t devpts devpts /dev/pts
+
+# Setup root filesystem if needed
+if [ ! -f /etc/passwd ]; then
+    echo "Setting up root filesystem..."
+    echo "root:x:0:0:root:/root:/bin/sh" > /etc/passwd
+    echo "root::0:0:::::" > /etc/shadow
+    mkdir -p /root
+fi
+
+echo "Root filesystem already set up."
+
+# Mount 9p shared modules directory
+mkdir -p /mnt/modules
+mount -t 9p -o trans=virtio modules_mount /mnt/modules 2>/dev/null || true
+
+# Run module sync if available
+if [ -x /mnt/modules/guesync.sh ]; then
+    /mnt/modules/guesync.sh
+fi
+
+echo "System ready."
+
+# Start shell
+exec /bin/sh

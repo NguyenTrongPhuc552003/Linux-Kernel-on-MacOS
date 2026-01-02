@@ -1,34 +1,38 @@
-// Package core provides core types, configuration, and context for elmos.
-package core
+// Package context provides build context management for elmos.
+package context
 
 import (
 	"errors"
 	"fmt"
 )
 
-// ErrCode represents error categories
+// ErrCode represents error categories.
 type ErrCode int
 
 const (
-	// ErrCodeConfig indicates a configuration error
+	// ErrCodeConfig indicates a configuration error.
 	ErrCodeConfig ErrCode = iota + 1
-	// ErrCodeImage indicates a disk image error
+	// ErrCodeImage indicates a disk image error.
 	ErrCodeImage
-	// ErrCodeRepo indicates a git repository error
+	// ErrCodeRepo indicates a git repository error.
 	ErrCodeRepo
-	// ErrCodeBuild indicates a kernel build error
+	// ErrCodeBuild indicates a kernel build error.
 	ErrCodeBuild
-	// ErrCodeQEMU indicates a QEMU error
+	// ErrCodeQEMU indicates a QEMU error.
 	ErrCodeQEMU
-	// ErrCodeModule indicates a kernel module error
+	// ErrCodeModule indicates a kernel module error.
 	ErrCodeModule
-	// ErrCodeDependency indicates a missing dependency
+	// ErrCodeDependency indicates a missing dependency.
 	ErrCodeDependency
-	// ErrCodePermission indicates insufficient permissions
+	// ErrCodePermission indicates insufficient permissions.
 	ErrCodePermission
+	// ErrCodeApp indicates a userspace app error.
+	ErrCodeApp
+	// ErrCodeRootfs indicates a rootfs error.
+	ErrCodeRootfs
 )
 
-// Error is a structured error type for elmos
+// Error is a structured error type for elmos.
 type Error struct {
 	Code    ErrCode
 	Message string
@@ -64,6 +68,10 @@ func (e *Error) codeString() string {
 		return "DEP"
 	case ErrCodePermission:
 		return "PERM"
+	case ErrCodeApp:
+		return "APP"
+	case ErrCodeRootfs:
+		return "ROOTFS"
 	default:
 		return "ERROR"
 	}
@@ -71,44 +79,54 @@ func (e *Error) codeString() string {
 
 // Error constructors
 
-// ConfigError creates a configuration error
+// ConfigError creates a configuration error.
 func ConfigError(msg string, cause error) *Error {
 	return &Error{Code: ErrCodeConfig, Message: msg, Cause: cause}
 }
 
-// ImageError creates a disk image error
+// ImageError creates a disk image error.
 func ImageError(msg string, cause error) *Error {
 	return &Error{Code: ErrCodeImage, Message: msg, Cause: cause}
 }
 
-// RepoError creates a repository error
+// RepoError creates a repository error.
 func RepoError(msg string, cause error) *Error {
 	return &Error{Code: ErrCodeRepo, Message: msg, Cause: cause}
 }
 
-// BuildError creates a build error
+// BuildError creates a build error.
 func BuildError(msg string, cause error) *Error {
 	return &Error{Code: ErrCodeBuild, Message: msg, Cause: cause}
 }
 
-// QEMUError creates a QEMU error
+// QEMUError creates a QEMU error.
 func QEMUError(msg string, cause error) *Error {
 	return &Error{Code: ErrCodeQEMU, Message: msg, Cause: cause}
 }
 
-// ModuleError creates a module error
+// ModuleError creates a module error.
 func ModuleError(msg string, cause error) *Error {
 	return &Error{Code: ErrCodeModule, Message: msg, Cause: cause}
 }
 
-// DependencyError creates a dependency error
+// DependencyError creates a dependency error.
 func DependencyError(msg string, cause error) *Error {
 	return &Error{Code: ErrCodeDependency, Message: msg, Cause: cause}
 }
 
-// PermissionError creates a permission error
+// PermissionError creates a permission error.
 func PermissionError(msg string, cause error) *Error {
 	return &Error{Code: ErrCodePermission, Message: msg, Cause: cause}
+}
+
+// AppError creates a userspace app error.
+func AppError(msg string, cause error) *Error {
+	return &Error{Code: ErrCodeApp, Message: msg, Cause: cause}
+}
+
+// RootfsError creates a rootfs error.
+func RootfsError(msg string, cause error) *Error {
+	return &Error{Code: ErrCodeRootfs, Message: msg, Cause: cause}
 }
 
 // Common errors

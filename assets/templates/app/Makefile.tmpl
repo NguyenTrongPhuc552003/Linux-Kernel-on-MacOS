@@ -1,0 +1,11 @@
+# {{.Name}} Makefile
+CC ?= clang
+CFLAGS ?= -Wall -Wextra -static
+
+{{.Name}}: {{.Name}}.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+clean:
+	rm -f {{.Name}}
+
+.PHONY: clean

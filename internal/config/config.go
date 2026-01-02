@@ -1,27 +1,17 @@
-// Package core provides core types, configuration, and context for elmos.
-package core
+// Package config provides configuration management for elmos.
+package config
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 
 	"github.com/spf13/viper"
 )
 
-// Default values
-const (
-	DefaultImageSize    = "20G"
-	DefaultVolumeName   = "kernel-dev"
-	DefaultArch         = "arm64"
-	DefaultCrossPrefix  = "llvm-"
-	DefaultMemory       = "2G"
-	DefaultGDBPort      = 1234
-	DefaultDebianMirror = "http://deb.debian.org/debian"
-)
-
-// Config holds the application configuration
+// Config holds the application configuration.
 type Config struct {
 	// Image settings
 	Image ImageConfig `mapstructure:"image"`
@@ -39,7 +29,7 @@ type Config struct {
 	Profiles map[string]ProfileConfig `mapstructure:"profiles"`
 }
 
-// ImageConfig holds disk image configuration
+// ImageConfig holds disk image configuration.
 type ImageConfig struct {
 	Path       string `mapstructure:"path"`
 	VolumeName string `mapstructure:"volume_name"`
@@ -47,7 +37,7 @@ type ImageConfig struct {
 	MountPoint string `mapstructure:"mount_point"`
 }
 
-// BuildConfig holds kernel build configuration
+// BuildConfig holds kernel build configuration.
 type BuildConfig struct {
 	Arch         string `mapstructure:"arch"`
 	Jobs         int    `mapstructure:"jobs"`
@@ -55,7 +45,7 @@ type BuildConfig struct {
 	CrossCompile string `mapstructure:"cross_compile"`
 }
 
-// QEMUConfig holds QEMU configuration
+// QEMUConfig holds QEMU configuration.
 type QEMUConfig struct {
 	Memory  string `mapstructure:"memory"`
 	GDBPort int    `mapstructure:"gdb_port"`
@@ -63,7 +53,7 @@ type QEMUConfig struct {
 	SMP     int    `mapstructure:"smp"`
 }
 
-// PathsConfig holds important paths
+// PathsConfig holds important paths.
 type PathsConfig struct {
 	ProjectRoot  string `mapstructure:"project_root"`
 	KernelDir    string `mapstructure:"kernel_dir"`
@@ -76,7 +66,7 @@ type PathsConfig struct {
 	DebianMirror string `mapstructure:"debian_mirror"`
 }
 
-// ProfileConfig holds a named configuration profile
+// ProfileConfig holds a named configuration profile.
 type ProfileConfig struct {
 	Arch         string `mapstructure:"arch"`
 	Jobs         int    `mapstructure:"jobs"`
@@ -84,61 +74,71 @@ type ProfileConfig struct {
 	CrossCompile string `mapstructure:"cross_compile"`
 }
 
-// configInstance is the global configuration
-var configInstance *Config
+var (
+	configOnce     sync.Once
+	configInstance *Config
+)
 
-// LoadConfig loads configuration from files and environment
-func LoadConfig() (*Config, error) {
-	if configInstance != nil {
-		return configInstance, nil
-	}
+// Load loads configuration from files and environment.
+// This is the preferred method for new code using dependency injection.
+func Load() (*Config, error) {
+	var loadErr error
 
-	v := viper.New()
+	configOnce.Do(func() {
+		v := viper.New()
 
-	// Set config name and paths
-	v.SetConfigName("elmos")
-	v.SetConfigType("yaml")
+		// Set config name and paths
+		v.SetConfigName("elmos")
+		v.SetConfigType("yaml")
 
-	// Config search paths
-	v.AddConfigPath(".")                                                  // Current directory
-	v.AddConfigPath(filepath.Join(os.Getenv("HOME"), ".config", "elmos")) // User config
-	v.AddConfigPath("/etc/elmos")                                         // System config
+		// Config search paths
+		v.AddConfigPath(".")                                                  // Current directory
+		v.AddConfigPath(filepath.Join(os.Getenv("HOME"), ".config", "elmos")) // User config
+		v.AddConfigPath("/etc/elmos")                                         // System config
 
-	// Environment variables
-	v.SetEnvPrefix("ELMOS")
-	v.AutomaticEnv()
+		// Environment variables
+		v.SetEnvPrefix("ELMOS")
+		v.AutomaticEnv()
 
-	// Set defaults
-	setDefaults(v)
+		// Set defaults
+		setDefaults(v)
 
-	// Read config file (ignore all errors - just use defaults)
-	// This prevents issues with other files being picked up
-	_ = v.ReadInConfig()
+		// Read config file (ignore errors - use defaults)
+		_ = v.ReadInConfig()
 
-	// Unmarshal into struct
-	cfg := &Config{}
-	if err := v.Unmarshal(cfg); err != nil {
-		// Even if unmarshal fails, continue with defaults
-		cfg = &Config{}
-	}
+		// Unmarshal into struct
+		cfg := &Config{}
+		if err := v.Unmarshal(cfg); err != nil {
+			// Even if unmarshal fails, continue with defaults
+			cfg = &Config{}
+		}
 
-	// Apply computed defaults
-	applyComputedDefaults(cfg)
+		// Apply computed defaults
+		applyComputedDefaults(cfg)
 
-	configInstance = cfg
-	return cfg, nil
+		configInstance = cfg
+	})
+
+	return configInstance, loadErr
 }
 
-// GetConfig returns the current configuration (must call LoadConfig first)
-func GetConfig() *Config {
+// Get returns the current configuration.
+// If Load() hasn't been called, it will be called automatically.
+func Get() *Config {
 	if configInstance == nil {
-		cfg, _ := LoadConfig()
+		cfg, _ := Load()
 		return cfg
 	}
 	return configInstance
 }
 
-// setDefaults sets default values for configuration
+// Reset clears the cached configuration (for testing).
+func Reset() {
+	configOnce = sync.Once{}
+	configInstance = nil
+}
+
+// setDefaults sets default values for configuration.
 func setDefaults(v *viper.Viper) {
 	// Image defaults
 	v.SetDefault("image.volume_name", DefaultVolumeName)
@@ -153,14 +153,14 @@ func setDefaults(v *viper.Viper) {
 	// QEMU defaults
 	v.SetDefault("qemu.memory", DefaultMemory)
 	v.SetDefault("qemu.gdb_port", DefaultGDBPort)
-	v.SetDefault("qemu.ssh_port", 2222)
+	v.SetDefault("qemu.ssh_port", DefaultSSHPort)
 	v.SetDefault("qemu.smp", runtime.NumCPU())
 
 	// Paths defaults
 	v.SetDefault("paths.debian_mirror", DefaultDebianMirror)
 }
 
-// applyComputedDefaults fills in paths based on project root
+// applyComputedDefaults fills in paths based on project root.
 func applyComputedDefaults(cfg *Config) {
 	// Find project root (where go.mod or elmos.yaml exists)
 	if cfg.Paths.ProjectRoot == "" {
@@ -217,8 +217,8 @@ func applyComputedDefaults(cfg *Config) {
 	}
 }
 
-// SaveConfig saves the current configuration to a YAML file
-func SaveConfig(cfg *Config, path string) error {
+// Save saves the configuration to a YAML file.
+func (cfg *Config) Save(path string) error {
 	v := viper.New()
 	v.SetConfigType("yaml")
 
@@ -232,22 +232,22 @@ func SaveConfig(cfg *Config, path string) error {
 	// Ensure directory exists
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return ConfigError(fmt.Sprintf("failed to create config directory: %s", dir), err)
+		return fmt.Errorf("failed to create config directory %s: %w", dir, err)
 	}
 
 	// Write config
 	if err := v.WriteConfigAs(path); err != nil {
-		return ConfigError("failed to write config file", err)
+		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
 	return nil
 }
 
-// ApplyProfile applies a named profile to the current configuration
+// ApplyProfile applies a named profile to the current configuration.
 func (cfg *Config) ApplyProfile(name string) error {
 	profile, ok := cfg.Profiles[name]
 	if !ok {
-		return ConfigError(fmt.Sprintf("profile not found: %s", name), nil)
+		return fmt.Errorf("profile not found: %s", name)
 	}
 
 	if profile.Arch != "" {
@@ -264,4 +264,9 @@ func (cfg *Config) ApplyProfile(name string) error {
 	}
 
 	return nil
+}
+
+// GetArchConfig returns the architecture configuration for the current build arch.
+func (cfg *Config) GetArchConfig() *ArchConfig {
+	return GetArchConfig(cfg.Build.Arch)
 }

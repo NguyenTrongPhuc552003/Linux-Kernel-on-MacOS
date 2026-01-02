@@ -1,5 +1,5 @@
 build:
-    arch: arm
+    arch: arm64
     jobs: 12
     llvm: true
     crosscompile: llvm-
