@@ -149,7 +149,7 @@ task release    # Multi-platform builds
 .
 ├── apps/           # Userspace applications
 ├── cmd/            # CLI commands (Go)
-├── internal/       # Core packages
+├── core/       # Core packages
 │   ├── core/       # Config, context
 │   └── tui/        # Interactive menu (Bubbletea)
 ├── libraries/      # Shims: byteswap.h, elf.h, asm/
