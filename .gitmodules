@@ -1,3 +1,6 @@
 [submodule "tools/debootstrap"]
 	path = tools/debootstrap
 	url = https://salsa.debian.org/installer-team/debootstrap.git
+[submodule "tools/toolchains"]
+	path = tools/toolchains
+	url = https://github.com/messense/homebrew-macos-cross-toolchains.git
