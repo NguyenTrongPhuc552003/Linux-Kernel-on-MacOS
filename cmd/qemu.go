@@ -89,7 +89,7 @@ var qemuArchConfigs = map[string]QEMUArchConfig{
 	},
 	"arm": {
 		Binary:  "qemu-system-arm",
-		Machine: "virt",
+		Machine: "virt,highmem=off",
 		CPU:     "cortex-a15",
 		Console: "ttyAMA0",
 		BIOS:    "",
@@ -147,33 +147,17 @@ func runQEMU(debug, graphical bool) error {
 		args = append(args, "-bios", "default")
 	}
 
-	// Disk and networking - use explicit device for ARM compatibility
-	if cfg.Build.Arch == "arm" {
-		// ARM32 needs explicit virtio-blk-device (not PCI)
-		args = append(args,
-			"-drive", fmt.Sprintf("file=%s,format=raw,if=none,id=hd0", cfg.Paths.DiskImage),
-			"-device", "virtio-blk-device,drive=hd0",
-			"-device", "virtio-net-device,netdev=net0",
-			"-netdev", "user,id=net0,hostfwd=tcp::2222-:22",
-		)
-		// 9p share - use mmio transport for ARM32
-		args = append(args,
-			"-fsdev", fmt.Sprintf("local,id=moddev,path=%s,security_model=none", cfg.Paths.ModulesDir),
-			"-device", "virtio-9p-device,fsdev=moddev,mount_tag=modules_mount",
-		)
-	} else {
-		// ARM64 and RISC-V can use PCI variants
-		args = append(args,
-			"-drive", fmt.Sprintf("file=%s,format=raw,if=virtio", cfg.Paths.DiskImage),
-			"-device", "virtio-net-device,netdev=net0",
-			"-netdev", "user,id=net0,hostfwd=tcp::2222-:22",
-		)
-		// 9p share for modules
-		args = append(args,
-			"-fsdev", fmt.Sprintf("local,id=moddev,path=%s,security_model=none", cfg.Paths.ModulesDir),
-			"-device", "virtio-9p-pci,fsdev=moddev,mount_tag=modules_mount",
-		)
-	}
+	// Disk and networking
+	args = append(args,
+		"-drive", fmt.Sprintf("file=%s,format=raw,if=virtio", cfg.Paths.DiskImage),
+		"-device", "virtio-net-device,netdev=net0",
+		"-netdev", "user,id=net0,hostfwd=tcp::2222-:22",
+	)
+	// 9p share for modules
+	args = append(args,
+		"-fsdev", fmt.Sprintf("local,id=moddev,path=%s,security_model=none", cfg.Paths.ModulesDir),
+		"-device", "virtio-9p-pci,fsdev=moddev,mount_tag=modules_mount",
+	)
 
 	// Boot parameters
 	appendStr := "root=/dev/vda rw init=/init earlycon"
@@ -186,20 +170,11 @@ func runQEMU(debug, graphical bool) error {
 		}
 		args = append(args, "-display", "cocoa")
 
-		// ARM32 needs non-PCI virtio devices
-		if cfg.Build.Arch == "arm" {
-			args = append(args,
-				"-device", "virtio-gpu-device",
-				"-device", "virtio-keyboard-device",
-				"-device", "virtio-mouse-device",
-			)
-		} else {
-			args = append(args,
-				"-device", "virtio-gpu-pci",
-				"-device", "virtio-keyboard-pci",
-				"-device", "virtio-mouse-pci",
-			)
-		}
+		args = append(args,
+			"-device", "virtio-gpu-pci",
+			"-device", "virtio-keyboard-pci",
+			"-device", "virtio-mouse-pci",
+		)
 		appendStr += " console=tty0"
 	} else {
 		args = append(args,
