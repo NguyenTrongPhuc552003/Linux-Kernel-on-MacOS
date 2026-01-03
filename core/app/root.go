@@ -102,6 +102,7 @@ Common workflow:
 	rootCmd.AddCommand(a.buildVersionCommand())
 	rootCmd.AddCommand(a.buildTUICommand())
 	rootCmd.AddCommand(a.buildInitCommand())
+	rootCmd.AddCommand(a.buildExitCommand())
 	rootCmd.AddCommand(a.buildConfigCommand())
 	rootCmd.AddCommand(a.buildDoctorCommand())
 	rootCmd.AddCommand(a.buildBuildCommand())
@@ -139,9 +140,10 @@ func (a *App) buildTUICommand() *cobra.Command {
 	}
 }
 
+// buildInitCommand builds the init command.
 func (a *App) buildInitCommand() *cobra.Command {
-	initCmd := &cobra.Command{
-		Use: "init", Short: "Initialize workspace (mount volume and clone kernel)",
+	return &cobra.Command{
+		Use: "init", Short: "Initialize workspace (mount volume)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !a.FS.Exists(a.Config.Image.Path) {
 				a.Printer.Step("Creating sparse disk image...")
@@ -166,25 +168,12 @@ func (a *App) buildInitCommand() *cobra.Command {
 			return nil
 		},
 	}
+}
 
-	mountCmd := &cobra.Command{
-		Use: "mount", Short: "Mount the sparse disk image",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if a.Context.IsMounted() {
-				a.Printer.Info("Volume already mounted at %s", a.Config.Image.MountPoint)
-				return nil
-			}
-			a.Printer.Step("Mounting volume...")
-			if err := a.Exec.Run(cmd.Context(), "hdiutil", "attach", a.Config.Image.Path); err != nil {
-				return fmt.Errorf("failed to mount: %w", err)
-			}
-			a.Printer.Success("Volume mounted at %s", a.Config.Image.MountPoint)
-			return nil
-		},
-	}
-
-	unmountCmd := &cobra.Command{
-		Use: "unmount", Short: "Unmount the sparse disk image",
+// buildExitCommand builds the exit command (unmount).
+func (a *App) buildExitCommand() *cobra.Command {
+	return &cobra.Command{
+		Use: "exit", Short: "Exit workspace (unmount volume)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !a.Context.IsMounted() {
 				a.Printer.Info("Volume not mounted")
@@ -203,32 +192,6 @@ func (a *App) buildInitCommand() *cobra.Command {
 			return nil
 		},
 	}
-
-	cloneCmd := &cobra.Command{
-		Use: "clone [git-url]", Short: "Clone the Linux kernel source",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := a.Context.EnsureMounted(); err != nil {
-				return err
-			}
-			if a.Context.KernelExists() {
-				a.Printer.Info("Kernel source already exists at %s", a.Config.Paths.KernelDir)
-				return nil
-			}
-			url := "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
-			if len(args) > 0 {
-				url = args[0]
-			}
-			a.Printer.Step("Cloning kernel from %s...", url)
-			if err := a.Exec.Run(cmd.Context(), "git", "clone", "--depth=1", url, a.Config.Paths.KernelDir); err != nil {
-				return fmt.Errorf("failed to clone: %w", err)
-			}
-			a.Printer.Success("Kernel cloned to %s", a.Config.Paths.KernelDir)
-			return nil
-		},
-	}
-
-	initCmd.AddCommand(mountCmd, unmountCmd, cloneCmd)
-	return initCmd
 }
 
 func (a *App) buildConfigCommand() *cobra.Command {
@@ -415,7 +378,30 @@ func (a *App) buildKernelCommand() *cobra.Command {
 		},
 	}
 
-	kernelCmd.AddCommand(configCmd, cleanCmd)
+	cloneCmd := &cobra.Command{
+		Use: "clone [git-url]", Short: "Clone the Linux kernel source",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := a.Context.EnsureMounted(); err != nil {
+				return err
+			}
+			if a.Context.KernelExists() {
+				a.Printer.Info("Kernel source already exists at %s", a.Config.Paths.KernelDir)
+				return nil
+			}
+			url := "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
+			if len(args) > 0 {
+				url = args[0]
+			}
+			a.Printer.Step("Cloning kernel from %s...", url)
+			if err := a.Exec.Run(cmd.Context(), "git", "clone", "--depth=1", url, a.Config.Paths.KernelDir); err != nil {
+				return fmt.Errorf("failed to clone: %w", err)
+			}
+			a.Printer.Success("Kernel cloned to %s", a.Config.Paths.KernelDir)
+			return nil
+		},
+	}
+
+	kernelCmd.AddCommand(configCmd, cleanCmd, cloneCmd)
 	return kernelCmd
 }
 
