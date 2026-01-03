@@ -191,10 +191,15 @@ func (a *App) buildInitCommand() *cobra.Command {
 				return nil
 			}
 			a.Printer.Step("Unmounting volume...")
-			if err := a.Exec.Run(cmd.Context(), "hdiutil", "detach", a.Config.Image.MountPoint); err != nil {
+			mountPoint, err := a.Context.GetActualMountPoint()
+			if err != nil {
+				// Fallback to config path if detection fails but IsMounted passed
+				mountPoint = a.Config.Image.MountPoint
+			}
+			if err := a.Exec.Run(cmd.Context(), "hdiutil", "detach", mountPoint); err != nil {
 				return fmt.Errorf("failed to unmount: %w", err)
 			}
-			a.Printer.Success("Volume unmounted")
+			a.Printer.Success("Volume unmounted from %s", mountPoint)
 			return nil
 		},
 	}
