@@ -131,6 +131,7 @@ func buildMenuStructure() []MenuItem {
 			{Label: "Doctor", Desc: "Check environment", Action: "doctor:check", Command: "elmos doctor"},
 		}},
 		{Label: "Kernel", Desc: "Configure and build Linux kernel", Children: []MenuItem{
+			{Label: "Status", Desc: "Show kernel source status", Action: "kernel:status", Command: "elmos kernel status"},
 			{Label: "Clone Source", Desc: "Download kernel source", Action: "kernel:clone", Command: "elmos kernel clone"},
 			{Label: "Default Config", Desc: "Standard defconfig", Action: "kernel:defconfig", Command: "elmos kernel config"},
 			{Label: "Tiny Config", Desc: "Minimal kernel", Action: "kernel:tinyconfig", Command: "elmos kernel config tinyconfig"},
@@ -380,6 +381,8 @@ func (m *Model) actionToArgs(action, inputValue string) []string {
 		return []string{"exit"}
 	case "gdb:connect":
 		return []string{"gdb"}
+	case "kernel:status":
+		return []string{"kernel", "status"}
 	case "kernel:clone":
 		return []string{"kernel", "clone"}
 	case "kernel:defconfig":
