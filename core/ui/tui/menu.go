@@ -125,12 +125,12 @@ func NewModel() Model {
 func buildMenuStructure() []MenuItem {
 	return []MenuItem{
 		{Label: "Workspace", Desc: "Initialize and manage workspace", Children: []MenuItem{
-			{Label: "Initialize All", Desc: "Create image + mount + setup", Action: "init:workspace", Command: "elmos init"},
-			{Label: "Mount Volume", Desc: "Attach the disk image", Action: "init:mount", Command: "elmos init mount"},
-			{Label: "Unmount Volume", Desc: "Detach the disk image", Action: "init:unmount", Command: "elmos init unmount"},
-			{Label: "Clone Kernel", Desc: "Download Linux source", Action: "init:clone", Command: "elmos init clone"},
+			{Label: "Initialize", Desc: "Create image & mount", Action: "init:workspace", Command: "elmos init"},
+			{Label: "Exit Workspace", Desc: "Unmount & cleanup", Action: "workspace:exit", Command: "elmos exit"},
+			{Label: "Doctor", Desc: "Check environment", Action: "doctor:check", Command: "elmos doctor"},
 		}},
 		{Label: "Kernel", Desc: "Configure and build Linux kernel", Children: []MenuItem{
+			{Label: "Clone Source", Desc: "Download kernel source", Action: "kernel:clone", Command: "elmos kernel clone"},
 			{Label: "Default Config", Desc: "Standard defconfig", Action: "kernel:defconfig", Command: "elmos kernel config"},
 			{Label: "Tiny Config", Desc: "Minimal kernel", Action: "kernel:tinyconfig", Command: "elmos kernel config tinyconfig"},
 			{Label: "KVM Guest", Desc: "Optimized for VMs", Action: "kernel:kvmconfig", Command: "elmos kernel config kvm_guest.config"},
@@ -373,12 +373,10 @@ func (m *Model) actionToArgs(action, inputValue string) []string {
 	switch action {
 	case "init:workspace":
 		return []string{"init"}
-	case "init:mount":
-		return []string{"init", "mount"}
-	case "init:unmount":
-		return []string{"init", "unmount"}
-	case "init:clone":
-		return []string{"init", "clone"}
+	case "workspace:exit":
+		return []string{"exit"}
+	case "kernel:clone":
+		return []string{"kernel", "clone"}
 	case "kernel:defconfig":
 		return []string{"kernel", "config"}
 	case "kernel:tinyconfig":
