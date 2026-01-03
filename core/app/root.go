@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -38,7 +39,6 @@ type App struct {
 	PatchManager  *patch.Manager
 	Printer       *ui.Printer
 	Verbose       bool
-	Interactive   bool
 	ConfigFile    string
 }
 
@@ -95,9 +95,8 @@ Common workflow:
 		},
 	}
 
-	rootCmd.PersistentFlags().BoolVarP(&a.Verbose, "verbose", "v", false, "verbose output")
-	rootCmd.PersistentFlags().BoolVarP(&a.Interactive, "interactive", "i", false, "enable interactive TUI mode")
-	rootCmd.PersistentFlags().StringVar(&a.ConfigFile, "config", "", "config file (default is elmos.yaml)")
+	rootCmd.PersistentFlags().BoolVarP(&a.Verbose, "verbose", "e", false, "enable verbose output")
+	rootCmd.PersistentFlags().StringVarP(&a.ConfigFile, "config", "c", "", "config file (default is elmos.yaml)")
 
 	rootCmd.AddCommand(a.buildVersionCommand())
 	rootCmd.AddCommand(a.buildTUICommand())
@@ -110,8 +109,13 @@ Common workflow:
 	rootCmd.AddCommand(a.buildModuleCommand())
 	rootCmd.AddCommand(a.buildAppsCommand())
 	rootCmd.AddCommand(a.buildQEMUCommand())
+	rootCmd.AddCommand(a.buildGDBCommand())
+	rootCmd.AddCommand(a.buildStatusCommand())
 	rootCmd.AddCommand(a.buildRootfsCommand())
 	rootCmd.AddCommand(a.buildPatchCommand())
+
+	// Apply custom styled help output
+	ui.SetCustomUsageFunc(rootCmd)
 
 	return rootCmd
 }
@@ -584,15 +588,65 @@ func (a *App) buildQEMUCommand() *cobra.Command {
 		},
 	}
 
-	gdbCmd := &cobra.Command{
-		Use: "gdb", Short: "Connect GDB to QEMU",
+	qemuCmd.AddCommand(runCmd, debugCmd)
+	return qemuCmd
+}
+
+// buildGDBCommand builds the gdb command (promoted from qemu gdb).
+func (a *App) buildGDBCommand() *cobra.Command {
+	return &cobra.Command{
+		Use: "gdb", Short: "Connect GDB to running QEMU debug session",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.QEMURunner.ConnectGDB()
 		},
 	}
+}
 
-	qemuCmd.AddCommand(runCmd, debugCmd, gdbCmd)
-	return qemuCmd
+// buildStatusCommand builds the status command.
+func (a *App) buildStatusCommand() *cobra.Command {
+	return &cobra.Command{
+		Use: "status", Short: "Show workspace status (volume mount info)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Check if mounted
+			if !a.Context.IsMounted() {
+				a.Printer.Info("Workspace not mounted")
+				return nil
+			}
+
+			// Get actual mount point
+			mountPoint, err := a.Context.GetActualMountPoint()
+			if err != nil {
+				mountPoint = a.Config.Image.MountPoint
+			}
+
+			a.Printer.Success("Workspace mounted at %s", mountPoint)
+			a.Printer.Print("")
+			a.Printer.Step("Volume info:")
+
+			// Run hdiutil info and display relevant parts
+			out, err := a.Exec.Output(cmd.Context(), "hdiutil", "info")
+			if err != nil {
+				return fmt.Errorf("failed to get hdiutil info: %w", err)
+			}
+
+			// Print the output (filtered to our image)
+			lines := strings.Split(string(out), "\n")
+			inOurImage := false
+			for _, line := range lines {
+				if strings.Contains(line, a.Config.Image.Path) {
+					inOurImage = true
+				}
+				if inOurImage {
+					a.Printer.Print("  %s", line)
+					if strings.HasPrefix(line, "/dev/disk") && strings.Contains(line, "/Volumes/") {
+						break
+					}
+				}
+			}
+
+			return nil
+		},
+	}
 }
 
 func (a *App) buildRootfsCommand() *cobra.Command {
