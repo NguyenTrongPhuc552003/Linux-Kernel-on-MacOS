@@ -397,7 +397,7 @@ func (a *App) buildKernelCommand() *cobra.Command {
 				url = args[0]
 			}
 			a.Printer.Step("Cloning kernel from %s...", url)
-			if err := a.Exec.Run(cmd.Context(), "git", "clone", "--depth=1", url, a.Config.Paths.KernelDir); err != nil {
+			if err := a.Exec.Run(cmd.Context(), "git", "clone", url, a.Config.Paths.KernelDir); err != nil {
 				return fmt.Errorf("failed to clone: %w", err)
 			}
 			a.Printer.Success("Kernel cloned to %s", a.Config.Paths.KernelDir)
@@ -452,7 +452,103 @@ func (a *App) buildKernelCommand() *cobra.Command {
 		},
 	}
 
-	kernelCmd.AddCommand(configCmd, cleanCmd, cloneCmd, statusCmd)
+	resetCmd := &cobra.Command{
+		Use: "reset", Short: "Reset kernel source (reclone completely)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := a.Context.EnsureMounted(); err != nil {
+				return err
+			}
+			if a.Context.KernelExists() {
+				a.Printer.Step("Removing existing kernel source...")
+				if err := os.RemoveAll(a.Config.Paths.KernelDir); err != nil {
+					return fmt.Errorf("failed to remove kernel: %w", err)
+				}
+			}
+			url := "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
+			a.Printer.Step("Cloning kernel from %s...", url)
+			if err := a.Exec.Run(cmd.Context(), "git", "clone", url, a.Config.Paths.KernelDir); err != nil {
+				return fmt.Errorf("failed to clone: %w", err)
+			}
+			a.Printer.Success("Kernel reset complete!")
+			return nil
+		},
+	}
+
+	branchCmd := &cobra.Command{
+		Use: "branch [ref]", Short: "List or switch branch/tag (auto-detects)",
+		Long: `List all branches and tags, or switch to a specific ref.
+Automatically detects whether the ref is a branch or tag.
+
+Examples:
+  elmos kernel branch           # List all refs
+  elmos kernel branch master    # Switch to branch
+  elmos kernel branch v6.7      # Switch to tag`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := a.Context.EnsureMounted(); err != nil {
+				return err
+			}
+			if !a.Context.KernelExists() {
+				a.Printer.Info("Kernel source not found. Run 'elmos kernel clone' first.")
+				return nil
+			}
+
+			if len(args) == 0 {
+				// List branches and tags
+				a.Printer.Step("Branches:")
+				branches, _ := a.Exec.Output(cmd.Context(), "git", "-C", a.Config.Paths.KernelDir, "branch", "-a", "--format=%(refname:short)")
+				for _, b := range strings.Split(string(branches), "\n") {
+					if b != "" {
+						a.Printer.Print("  %s", b)
+					}
+				}
+				a.Printer.Print("")
+				a.Printer.Step("Tags (latest 10):")
+				tags, _ := a.Exec.Output(cmd.Context(), "git", "-C", a.Config.Paths.KernelDir, "tag", "-l", "--sort=-v:refname", "v*")
+				for i, t := range strings.Split(string(tags), "\n") {
+					if i >= 10 || t == "" {
+						break
+					}
+					a.Printer.Print("  %s", t)
+				}
+				return nil
+			}
+
+			// Smart checkout - works for both branches and tags
+			ref := args[0]
+			a.Printer.Step("Switching to: %s", ref)
+			if err := a.Exec.Run(cmd.Context(), "git", "-C", a.Config.Paths.KernelDir, "checkout", ref); err != nil {
+				// Try fetching if not found
+				a.Printer.Info("Not found locally, fetching...")
+				_ = a.Exec.Run(cmd.Context(), "git", "-C", a.Config.Paths.KernelDir, "fetch", "--all", "--tags")
+				if err := a.Exec.Run(cmd.Context(), "git", "-C", a.Config.Paths.KernelDir, "checkout", ref); err != nil {
+					return fmt.Errorf("failed to switch: %w", err)
+				}
+			}
+			a.Printer.Success("Now on: %s", ref)
+			return nil
+		},
+	}
+
+	pullCmd := &cobra.Command{
+		Use: "pull", Short: "Update kernel source",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := a.Context.EnsureMounted(); err != nil {
+				return err
+			}
+			if !a.Context.KernelExists() {
+				a.Printer.Info("Kernel source not found. Run 'elmos kernel clone' first.")
+				return nil
+			}
+			a.Printer.Step("Updating kernel source...")
+			if err := a.Exec.Run(cmd.Context(), "git", "-C", a.Config.Paths.KernelDir, "pull"); err != nil {
+				return fmt.Errorf("failed to update: %w", err)
+			}
+			a.Printer.Success("Kernel updated!")
+			return nil
+		},
+	}
+
+	kernelCmd.AddCommand(configCmd, cleanCmd, cloneCmd, statusCmd, resetCmd, branchCmd, pullCmd)
 	return kernelCmd
 }
 
