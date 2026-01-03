@@ -177,14 +177,12 @@ func groupCommands(cmds []*cobra.Command) []commandGroup {
 			continue
 		}
 		switch cmd.Name() {
-		case "init", "exit", "doctor", "version", "tui", "status":
+		case "init", "exit", "doctor", "version", "tui", "status", "arch":
 			core = append(core, cmd)
 		case "build", "kernel", "module", "app", "rootfs", "patch":
 			build = append(build, cmd)
 		case "qemu", "gdb":
 			runtime = append(runtime, cmd)
-		case "config":
-			config = append(config, cmd)
 		default:
 			other = append(other, cmd)
 		}
