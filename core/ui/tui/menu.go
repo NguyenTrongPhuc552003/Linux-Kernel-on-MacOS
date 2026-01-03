@@ -126,6 +126,7 @@ func buildMenuStructure() []MenuItem {
 	return []MenuItem{
 		{Label: "Workspace", Desc: "Initialize and manage workspace", Children: []MenuItem{
 			{Label: "Initialize", Desc: "Create image & mount", Action: "init:workspace", Command: "elmos init"},
+			{Label: "Status", Desc: "Show workspace status", Action: "workspace:status", Command: "elmos status"},
 			{Label: "Exit Workspace", Desc: "Unmount & cleanup", Action: "workspace:exit", Command: "elmos exit"},
 			{Label: "Doctor", Desc: "Check environment", Action: "doctor:check", Command: "elmos doctor"},
 		}},
@@ -156,8 +157,8 @@ func buildMenuStructure() []MenuItem {
 			{Label: "Run (Console)", Desc: "Boot in terminal", Action: "qemu:run", Command: "elmos qemu run", Interactive: true, Args: []string{"qemu", "run"}},
 			{Label: "Run (GUI)", Desc: "Boot with display", Action: "qemu:graphical", Command: "elmos qemu run -g", Interactive: true, Args: []string{"qemu", "run", "-g"}},
 			{Label: "Debug Mode", Desc: "Start GDB server", Action: "qemu:debug", Command: "elmos qemu debug", Interactive: true, Args: []string{"qemu", "debug"}},
-			{Label: "Connect GDB", Desc: "Attach debugger", Action: "qemu:gdb", Command: "elmos qemu gdb", Interactive: true, Args: []string{"qemu", "gdb"}},
 		}},
+		{Label: "GDB", Desc: "Connect debugger to QEMU", Action: "gdb:connect", Command: "elmos gdb"},
 		{Label: "RootFS", Desc: "Create root filesystem", Children: []MenuItem{
 			{Label: "Create (5G)", Desc: "Default size rootfs", Action: "rootfs:create", Command: "elmos rootfs create"},
 			{Label: "Create Custom", Desc: "Specify size (e.g. 10G)", Action: "rootfs:create:custom", Command: "elmos rootfs create -s <size>", NeedsInput: true, InputPrompt: "Size (e.g. 10G):", InputPlaceholder: "10G"},
@@ -373,8 +374,12 @@ func (m *Model) actionToArgs(action, inputValue string) []string {
 	switch action {
 	case "init:workspace":
 		return []string{"init"}
+	case "workspace:status":
+		return []string{"status"}
 	case "workspace:exit":
 		return []string{"exit"}
+	case "gdb:connect":
+		return []string{"gdb"}
 	case "kernel:clone":
 		return []string{"kernel", "clone"}
 	case "kernel:defconfig":
