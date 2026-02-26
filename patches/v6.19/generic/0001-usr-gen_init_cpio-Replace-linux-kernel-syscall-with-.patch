@@ -1,0 +1,74 @@
+From a639d35e9a146e33b4d6e907f6ad34863d1d2355 Mon Sep 17 00:00:00 2001
+From: Phuc Nguyen <trong552003@gmail.com>
+Date: Sun, 7 Dec 2025 20:29:58 +0700
+Subject: [PATCH] usr: gen_init_cpio: Replace linux kernel syscall with
+ MacOS-compatible version
+
+Signed-off-by: Phuc Nguyen <trong552003@gmail.com>
+---
+ usr/gen_init_cpio.c | 40 ++++++++++++++++++++++++++++++++--------
+ 1 file changed, 32 insertions(+), 8 deletions(-)
+
+diff --git a/usr/gen_init_cpio.c b/usr/gen_init_cpio.c
+index b7296edc6626..d8d8c3748029 100644
+--- a/usr/gen_init_cpio.c
++++ b/usr/gen_init_cpio.c
+@@ -14,6 +14,12 @@
+ #include <ctype.h>
+ #include <limits.h>
+ 
++#ifdef __APPLE__
++#include <copyfile.h>
++/* macOS has no O_LARGEFILE — file offsets are always 64-bit */
++#define O_LARGEFILE 0
++#endif
++
+ /*
+  * Original work by Jeff Garzik
+  *
+@@ -456,16 +462,34 @@ static int cpio_mkfile(const char *name, const char *location,
+ 		    push_pad(namepadlen ? namepadlen : padlen(offset, 4)) < 0)
+ 			goto error;
+ 
+-		if (size) {
+-			this_read = copy_file_range(file, NULL, outfd, NULL, size, 0);
+-			if (this_read > 0) {
+-				if (this_read > size)
+-					goto error;
+-				offset += this_read;
+-				size -= this_read;
++#if COPY_FILE_RANGE
++    /* On macOS, use Apple's efficient copyfile() family instead of Linux-only copy_file_range() */
++#ifdef __APPLE__
++		#include <copyfile.h>
++		ssize_t this_read;
++		if (size > 0) {
++			/* copyfile() with COPYFILE_DATA does zero-copy when possible */
++			if (copyfile(filename, NULL, NULL, COPYFILE_DATA | COPYFILE_STAT) == 0) {
++				/* Successfully used macOS zero-copy path */
++				offset += size;
++				size = 0;
++				goto next_file;
+ 			}
+-			/* short or failed copy falls back to read/write... */
++			/* Fall back to read/write if copyfile fails (e.g. cross-device) */
++		}
++#else
++		ssize_t this_read = copy_file_range(file, NULL, outfd, NULL, size, 0);
++		if (this_read > 0) {
++			if (this_read > size)
++				this_read = size;
++			offset += this_read;
++			size -= this_read;
++			if (this_read < size)
++				goto short_copy;
++			goto next_file;
+ 		}
++#endif
++#endif
+ 
+ 		while (size) {
+ 			unsigned char filebuf[65536];
+-- 
+2.52.0
+
