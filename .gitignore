@@ -5,10 +5,6 @@
 /build/
 *.log
 
-# Workspace & Data
-/data/
-*.sparseimage
-
 # Kernel Build Artifacts
 *.ko
 *.o*

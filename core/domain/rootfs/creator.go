@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	elconfig "github.com/NguyenTrongPhuc552003/elmos/core/config"
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/executor"
@@ -37,6 +38,12 @@ func (c *Creator) Create(ctx context.Context, opts CreateOptions) error {
 
 	diskImage := c.cfg.Paths.DiskImage
 	rootfsDir := c.cfg.Paths.RootfsDir
+	if err := c.validateManagedPath("rootfs", rootfsDir); err != nil {
+		return err
+	}
+	if err := c.validateManagedPath("disk image", diskImage); err != nil {
+		return err
+	}
 
 	if err := c.cleanRootfsDir(ctx, rootfsDir); err != nil {
 		return err
@@ -54,7 +61,7 @@ func (c *Creator) Create(ctx context.Context, opts CreateOptions) error {
 		return err
 	}
 
-	if err := c.fixAptLists(rootfsDir); err != nil {
+	if err := c.fixAptLists(ctx, rootfsDir); err != nil {
 		fmt.Printf("Warning: failed to fix apt lists: %v\n", err)
 	}
 
@@ -124,7 +131,7 @@ func (c *Creator) createDiskImage(ctx context.Context, diskImage, rootfsDir, siz
 
 // fixAptLists smoothes over differences between debootstrap versions by symlinking
 // http:__ prefix files to their non-prefixed counterparts.
-func (c *Creator) fixAptLists(rootfsDir string) error {
+func (c *Creator) fixAptLists(ctx context.Context, rootfsDir string) error {
 	listsDir := filepath.Join(rootfsDir, "var", "lib", "apt", "lists")
 	entries, err := os.ReadDir(listsDir)
 	if err != nil {
@@ -146,11 +153,9 @@ func (c *Creator) fixAptLists(rootfsDir string) error {
 
 		if newName != name {
 			newPath := filepath.Join(listsDir, newName)
-			// Create symlink if it doesn't match
-			// We need to use sudo because the directory is owned by root (created by sudo debootstrap)
-			// Use absolute path for target to be safe, or just filename if relative
-			// Here we use just name because they are in the same directory
-			_ = c.exec.Run(context.Background(), "sudo", "ln", "-sf", name, newPath)
+			if err := c.exec.Run(ctx, "sudo", "ln", "-sf", name, newPath); err != nil {
+				return fmt.Errorf("failed to fix apt list entry %q: %w", name, err)
+			}
 		}
 	}
 	return nil
@@ -220,6 +225,13 @@ func (c *Creator) Status() (*RootfsInfo, error) {
 
 // Clean removes the rootfs directory and disk image.
 func (c *Creator) Clean(ctx context.Context) error {
+	if err := c.validateManagedPath("disk image", c.cfg.Paths.DiskImage); err != nil {
+		return err
+	}
+	if err := c.validateManagedPath("rootfs", c.cfg.Paths.RootfsDir); err != nil {
+		return err
+	}
+
 	// Remove disk image
 	if c.fs.Exists(c.cfg.Paths.DiskImage) {
 		if err := c.exec.Run(ctx, "rm", "-f", c.cfg.Paths.DiskImage); err != nil {
@@ -235,6 +247,29 @@ func (c *Creator) Clean(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (c *Creator) validateManagedPath(kind, path string) error {
+	cleanPath, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return fmt.Errorf("failed to resolve %s path %q: %w", kind, path, err)
+	}
+
+	allowedRoots := []string{c.cfg.Paths.ProjectRoot, c.cfg.Image.MountPoint}
+	for _, root := range allowedRoots {
+		if root == "" {
+			continue
+		}
+		cleanRoot, rootErr := filepath.Abs(filepath.Clean(root))
+		if rootErr != nil {
+			continue
+		}
+		if cleanPath == cleanRoot || strings.HasPrefix(cleanPath, cleanRoot+string(filepath.Separator)) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("refusing unsafe %s path outside workspace boundaries: %s", kind, path)
 }
 
 // Exists returns true if the rootfs disk image exists.

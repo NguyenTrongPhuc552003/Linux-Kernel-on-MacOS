@@ -1,0 +1,329 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NguyenTrongPhuc552003/elmos/assets/schemas/machine.schema.json",
+  "title": "ELMOS Machine Definition",
+  "description": "Schema for machine/<name>.yml board definition files. The top-level 'machine:' envelope is required.",
+  "type": "object",
+  "required": [
+    "machine"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "machine": {
+      "type": "object",
+      "description": "Board-specific configuration",
+      "required": [
+        "name",
+        "kernel",
+        "bootloader",
+        "qemu"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique machine identifier (e.g. rock5b_plus)",
+          "minLength": 1
+        },
+        "manufacturer": {
+          "type": "string",
+          "description": "Board manufacturer name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable board description"
+        },
+        "tags": {
+          "type": "array",
+          "description": "Classification tags for board discovery",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "arm64",
+              "rockchip",
+              "rk3588",
+              "production-ready"
+            ]
+          ]
+        },
+        "kernel": {
+          "type": "object",
+          "required": [
+            "arch"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "arch": {
+              "type": "string",
+              "description": "Kernel ARCH value",
+              "enum": [
+                "arm64",
+                "arm",
+                "riscv",
+                "x86",
+                "x86_64",
+                "mips"
+              ]
+            },
+            "defconfig": {
+              "type": "string",
+              "description": "Kernel defconfig filename (relative to arch/<arch>/configs/)"
+            },
+            "device_trees": {
+              "type": "array",
+              "description": "DTB filenames to build",
+              "items": {
+                "type": "string"
+              }
+            },
+            "config_options": {
+              "type": "array",
+              "description": "Additional CONFIG_* options applied after defconfig",
+              "items": {
+                "type": "string",
+                "pattern": "^(CONFIG_[A-Z0-9_]+=|# CONFIG_[A-Z0-9_]+ is not set)"
+              }
+            },
+            "patches": {
+              "type": "array",
+              "description": "Patch file paths to apply to kernel source",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "bootloader": {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "u-boot",
+                "barebox"
+              ],
+              "description": "Bootloader type"
+            },
+            "repo": {
+              "type": "string",
+              "description": "Git repository URL for bootloader source"
+            },
+            "version": {
+              "type": "string",
+              "description": "Git tag or branch to use",
+              "examples": [
+                "v2024.01",
+                "v2023.10"
+              ]
+            },
+            "defconfig": {
+              "type": "string",
+              "description": "Bootloader defconfig name"
+            },
+            "binary": {
+              "type": "string",
+              "description": "Output binary filename after build",
+              "examples": [
+                "u-boot.itb",
+                "u-boot-sunxi-with-spl.bin"
+              ]
+            },
+            "firmware": {
+              "type": "array",
+              "description": "SoC-specific firmware blobs required",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "src",
+                  "blob_name"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "src": {
+                    "type": "string",
+                    "description": "URL, registry path, or local path"
+                  },
+                  "blob_name": {
+                    "type": "string"
+                  },
+                  "checksum": {
+                    "type": "string",
+                    "description": "SHA256 hex digest"
+                  },
+                  "required": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                }
+              }
+            },
+            "patches": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "flash": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": [
+                    "rkdevtool",
+                    "fastboot",
+                    "tftp",
+                    "dd",
+                    "uuu"
+                  ],
+                  "description": "Flashing method"
+                },
+                "offset_mb": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "device_pattern": {
+                  "type": "string"
+                },
+                "pre_flash_cmd": {
+                  "type": "string"
+                },
+                "post_flash_cmd": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "qemu": {
+          "type": "object",
+          "required": [
+            "system"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "system": {
+              "type": "string",
+              "description": "QEMU system binary",
+              "examples": [
+                "qemu-system-aarch64",
+                "qemu-system-arm"
+              ]
+            },
+            "machine": {
+              "type": "string",
+              "examples": [
+                "virt",
+                "virt,highmem=off"
+              ]
+            },
+            "cpu": {
+              "type": "string",
+              "examples": [
+                "cortex-a72",
+                "cortex-a15"
+              ]
+            },
+            "memory": {
+              "type": "string",
+              "examples": [
+                "2G",
+                "1G"
+              ]
+            },
+            "network": {
+              "type": "string",
+              "enum": [
+                "user",
+                "tap",
+                "none"
+              ]
+            },
+            "console": {
+              "type": "string",
+              "examples": [
+                "ttyAMA0",
+                "ttyS0"
+              ]
+            },
+            "smp": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            },
+            "extra_args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "rootfs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "extra_packages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "kernel_modules": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "post_build_script": {
+              "type": "string"
+            },
+            "devices": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "type",
+                  "major",
+                  "minor"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "char",
+                      "block"
+                    ]
+                  },
+                  "major": {
+                    "type": "integer"
+                  },
+                  "minor": {
+                    "type": "integer"
+                  },
+                  "permissions": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

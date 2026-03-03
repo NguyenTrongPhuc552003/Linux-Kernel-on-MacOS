@@ -15,6 +15,7 @@ import (
 	"github.com/NguyenTrongPhuc552003/elmos/core/domain/toolchain"
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/executor"
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/filesystem"
+	"github.com/NguyenTrongPhuc552003/elmos/core/plugin"
 	"github.com/NguyenTrongPhuc552003/elmos/core/ui"
 )
 
@@ -39,6 +40,14 @@ type Context struct {
 	// Flags that can be modified
 	Verbose    *bool
 	ConfigFile *string
+
+	// ========== NEW v2.0 PLUGIN FIELDS ==========
+
+	// HookExecutor manages build lifecycle hooks
+	HookExecutor *plugin.HookExecutor
+
+	// PluginRegistry manages loaded plugins
+	PluginRegistry *plugin.Registry
 }
 
 // Register adds all subcommands to the root command.
@@ -58,4 +67,7 @@ func Register(ctx *Context, rootCmd *cobra.Command) {
 	rootCmd.AddCommand(BuildRootfs(ctx))
 	rootCmd.AddCommand(BuildPatch(ctx))
 	rootCmd.AddCommand(BuildToolchains(ctx))
+	// NEW v2.0 commands
+	rootCmd.AddCommand(BuildPlugins(ctx))
+	rootCmd.AddCommand(BuildBootloader(ctx))
 }

@@ -17,23 +17,23 @@ func BuildRootfs(ctx *Context) *cobra.Command {
 
 	// Create command
 	var size string
-	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Create rootfs with Debian",
-		Long:  "Create an ext4 disk image with Debian rootfs using debootstrap",
+	buildCmd := &cobra.Command{
+		Use:   "build",
+		Short: "Build rootfs with Debian",
+		Long:  "Build an ext4 disk image with Debian rootfs using debootstrap",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := ctx.AppContext.EnsureMounted(); err != nil {
 				return err
 			}
-			ctx.Printer.Step("Creating rootfs...")
+			ctx.Printer.Step("Building rootfs...")
 			if err := ctx.RootfsCreator.Create(cmd.Context(), rootfs.CreateOptions{Size: size}); err != nil {
 				return err
 			}
-			ctx.Printer.Success("Rootfs created!")
+			ctx.Printer.Success("Rootfs built!")
 			return nil
 		},
 	}
-	createCmd.Flags().StringVarP(&size, "size", "s", "5G", "Disk image size (e.g., 5G, 10G)")
+	buildCmd.Flags().StringVarP(&size, "size", "s", "5G", "Disk image size (e.g., 5G, 10G)")
 
 	// Status command
 	statusCmd := &cobra.Command{
@@ -83,7 +83,7 @@ func BuildRootfs(ctx *Context) *cobra.Command {
 		},
 	}
 
-	rootfsCmd.AddCommand(createCmd, statusCmd, cleanCmd)
+	rootfsCmd.AddCommand(buildCmd, statusCmd, cleanCmd)
 	return rootfsCmd
 }
 

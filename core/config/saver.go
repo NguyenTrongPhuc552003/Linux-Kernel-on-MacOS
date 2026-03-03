@@ -7,28 +7,45 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
+// saveConfig is the serialised form of the workspace configuration.
+// Only the fields that are written to elmos.yaml are included here;
+// computed/runtime fields (Machines, CurrentMachine, Plugins, etc.) are omitted.
+type saveConfig struct {
+	Image    ImageConfig              `yaml:"image"`
+	Build    BuildConfig              `yaml:"build"`
+	QEMU     QEMUConfig               `yaml:"qemu"`
+	Paths    PathsConfig              `yaml:"paths,omitempty"`
+	Profiles map[string]ProfileConfig `yaml:"profiles,omitempty"`
+}
+
 // Save saves the configuration to a YAML file.
+// Keys in the output match the mapstructure tags so the file can be
+// loaded back by config.Load without any value loss.
 func (cfg *Config) Save(path string) error {
-	v := viper.New()
-	v.SetConfigType("yaml")
-
 	defaults := cfg.computeDefaults()
-	saveCfg := cfg.prepareForSave(defaults)
+	prepared := cfg.prepareForSave(defaults)
 
-	v.Set("image", saveCfg.Image)
-	v.Set("build", saveCfg.Build)
-	v.Set("qemu", saveCfg.QEMU)
-	v.Set("paths", saveCfg.Paths)
-	v.Set("profiles", saveCfg.Profiles)
+	sc := saveConfig{
+		Image:    prepared.Image,
+		Build:    prepared.Build,
+		QEMU:     prepared.QEMU,
+		Paths:    prepared.Paths,
+		Profiles: prepared.Profiles,
+	}
+
+	data, err := yaml.Marshal(sc)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
 
 	if err := ensureDir(filepath.Dir(path)); err != nil {
 		return err
 	}
 
-	if err := v.WriteConfigAs(path); err != nil {
+	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
@@ -54,11 +71,12 @@ func (cfg *Config) prepareForSave(defaults *Config) Config {
 }
 
 // clearDefaultPaths clears path values that match defaults.
+// ProjectRoot is ALWAYS saved so paths resolve correctly even when the
+// config is loaded from a different working directory (e.g. via --config).
 func clearDefaultPaths(paths, defaults PathsConfig) PathsConfig {
 	result := paths
-	if paths.ProjectRoot == defaults.ProjectRoot {
-		result.ProjectRoot = ""
-	}
+	// ProjectRoot is intentionally never cleared — it anchors all
+	// workspace-relative path computations.
 	if paths.KernelDir == defaults.KernelDir {
 		result.KernelDir = ""
 	}

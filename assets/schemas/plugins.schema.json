@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NguyenTrongPhuc552003/elmos/assets/schemas/plugins.schema.json",
+  "title": "ELMOS Plugin Manifest",
+  "description": "Schema for .elmos/plugins.yml plugin configuration manifest.",
+  "type": "object",
+  "required": [
+    "plugins"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "plugins": {
+      "type": "object",
+      "description": "Map of plugin name → plugin configuration",
+      "additionalProperties": {
+        "$ref": "#/$defs/PluginEntry"
+      },
+      "examples": [
+        {
+          "kernel-builder": {
+            "type": "builtin",
+            "enabled": true
+          },
+          "bsp-manager": {
+            "type": "builtin",
+            "enabled": true,
+            "config": {
+              "registries": [
+                {
+                  "name": "official",
+                  "url": "https://github.com/elmos-sdk/bsp-registry"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "PluginEntry": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "builtin",
+            "user"
+          ],
+          "description": "Plugin origin: builtin (compiled in) or user (external binary)"
+        },
+        "path": {
+          "type": "string",
+          "description": "Filesystem path to user plugin binary or directory (required for type=user)"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to load and activate this plugin"
+        },
+        "config": {
+          "type": "object",
+          "description": "Plugin-specific configuration passed to Init()",
+          "additionalProperties": true
+        }
+      },
+      "if": {
+        "properties": {
+          "type": {
+            "const": "user"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "path"
+        ]
+      }
+    }
+  }
+}

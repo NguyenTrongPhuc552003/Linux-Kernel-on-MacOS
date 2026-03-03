@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
+	"runtime"
 
 	elconfig "github.com/NguyenTrongPhuc552003/elmos/core/config"
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/filesystem"
@@ -69,7 +71,14 @@ func (f *AutoFixer) FixElfH() error {
 }
 
 // CanFixElfH checks if elf.h can be downloaded (is missing).
+// On Linux, elf.h is provided by libc-dev at /usr/include/elf.h, so downloading
+// from glibc is unnecessary when the system header exists.
 func (f *AutoFixer) CanFixElfH() bool {
+	if runtime.GOOS != "darwin" {
+		if _, err := os.Stat("/usr/include/elf.h"); err == nil {
+			return false // system elf.h present — no fix needed
+		}
+	}
 	elfPath := filepath.Join(f.cfg.Paths.LibrariesDir, "elf.h")
 	return !f.fs.Exists(elfPath)
 }

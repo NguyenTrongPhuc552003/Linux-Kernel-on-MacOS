@@ -1,0 +1,19 @@
+{
+    "$schema": "https://openapi.vercel.sh/vercel.json",
+    "name": "elmos",
+    "version": 2,
+    "framework": null,
+    "buildCommand": "task build",
+    "devCommand": "task dev:check",
+    "installCommand": "go mod download",
+    "outputDirectory": "build",
+    "functions": {
+        "cmd/elmos/main.go": {
+            "runtime": "go1.26.x"
+        }
+    },
+    "github": {
+        "enabled": true,
+        "autoAlias": true
+    }
+}

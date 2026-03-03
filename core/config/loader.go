@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/NguyenTrongPhuc552003/elmos/assets"
+	"github.com/NguyenTrongPhuc552003/elmos/core/infra/platform"
 	"github.com/spf13/viper"
 )
 
@@ -28,25 +28,25 @@ func Load(configPath string) (*Config, error) {
 		// Use specific config file
 		v.SetConfigFile(configPath)
 	} else {
-		// Set config name and search paths
-		v.SetConfigName("elmos")
-		v.SetConfigType("yaml")
-		v.AddConfigPath(".")                                                  // Current directory
-		v.AddConfigPath(filepath.Join(".", "build"))                          // Build directory
-		v.AddConfigPath(filepath.Join(os.Getenv("HOME"), ".config", "elmos")) // User config
-		v.AddConfigPath("/etc/elmos")                                         // System config
-
-		// Auto-create elmos.yaml from embedded template in build/ if it doesn't exist
-		cwd, _ := os.Getwd()
-		buildDir := filepath.Join(cwd, "build")
-		configFile := filepath.Join(buildDir, "elmos.yaml")
-		if _, err := os.Stat(configFile); os.IsNotExist(err) {
-			// Ensure build directory exists
-			_ = os.MkdirAll(buildDir, 0755)
-			// Use embedded template
-			if tmplData, err := assets.GetConfigTemplate(); err == nil {
-				_ = os.WriteFile(configFile, tmplData, 0644)
+		// Auto-detect workspace-named config: if running inside a workspace
+		// directory (e.g. hello/) that contains hello.yaml, use it directly
+		// so users don't need to pass --config on every command.
+		autoDetected := false
+		if cwd, err := os.Getwd(); err == nil {
+			dirName := filepath.Base(cwd)
+			candidate := filepath.Join(cwd, dirName+".yaml")
+			if _, statErr := os.Stat(candidate); statErr == nil {
+				v.SetConfigFile(candidate)
+				autoDetected = true
 			}
+		}
+		if !autoDetected {
+			// Fall back to generic elmos.yaml search across standard paths.
+			v.SetConfigName("elmos")
+			v.SetConfigType("yaml")
+			v.AddConfigPath(".")                                                  // Current directory
+			v.AddConfigPath(filepath.Join(os.Getenv("HOME"), ".config", "elmos")) // User config
+			v.AddConfigPath("/etc/elmos")                                         // System config
 		}
 	}
 
@@ -141,15 +141,27 @@ func applyProjectRoot(cfg *Config) {
 // applyImageDefaults sets image-related defaults.
 func applyImageDefaults(cfg *Config) {
 	root := cfg.Paths.ProjectRoot
+	name := cfg.Image.VolumeName
 	if cfg.Image.Path == "" {
-		cfg.Image.Path = filepath.Join(root, "data", fmt.Sprintf("%s.sparseimage", cfg.Image.VolumeName))
+		cfg.Image.Path = filepath.Join(root, name, name+imageExtension())
 	}
 	if cfg.Image.MountPoint == "" {
-		cfg.Image.MountPoint = filepath.Join("/Volumes", cfg.Image.VolumeName)
+		cfg.Image.MountPoint = platform.Current().Paths().WorkspaceRoot(name)
 	}
 }
 
+// imageExtension returns the disk image file extension for the current platform.
+func imageExtension() string {
+	if runtime.GOOS == "darwin" {
+		return ".sparseimage"
+	}
+	return ".img"
+}
+
 // applyPathDefaults sets path-related defaults.
+// All resource paths resolve inside the workspace (ProjectRoot) so that
+// modules, apps, libraries, and patches are workspace-local — never pointing
+// at the source repository that contains the elmos binary.
 func applyPathDefaults(cfg *Config) {
 	root := cfg.Paths.ProjectRoot
 	mount := cfg.Image.MountPoint

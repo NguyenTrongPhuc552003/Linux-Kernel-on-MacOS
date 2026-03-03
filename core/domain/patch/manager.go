@@ -3,6 +3,7 @@ package patch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,8 @@ import (
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/executor"
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/filesystem"
 )
+
+var ErrPathTraversal = errors.New("patch: path escapes allowed directories")
 
 // Manager handles kernel patch operations.
 type Manager struct {
@@ -30,29 +33,14 @@ func NewManager(exec executor.Executor, fs filesystem.FileSystem, cfg *elconfig.
 
 // Apply applies a patch file to the kernel source.
 func (m *Manager) Apply(ctx context.Context, patchFile string) error {
-	// Resolve patch path
-	patchPath := patchFile
-
-	// Handle absolute paths
-	if filepath.IsAbs(patchPath) {
-		if !m.fs.Exists(patchPath) {
-			return fmt.Errorf("patch file not found: %s", patchFile)
-		}
-	} else {
-		// Strip redundant patches/ prefix if user included it
-		patchPath = strings.TrimPrefix(patchPath, "patches/")
-
-		// Build full path from patches directory
-		fullPath := filepath.Join(m.cfg.Paths.PatchesDir, patchPath)
-		if !m.fs.Exists(fullPath) {
-			return fmt.Errorf("patch file not found: %s", patchFile)
-		}
-		patchPath = fullPath
+	patchPath, err := m.resolvePatchPath(patchFile)
+	if err != nil {
+		return err
 	}
 
 	// Check if patch is already applied
 	checkArgs := []string{"-p1", "--dry-run", "-i", patchPath}
-	err := m.exec.RunInDir(ctx, m.cfg.Paths.KernelDir, "patch", checkArgs...)
+	err = m.exec.RunInDir(ctx, m.cfg.Paths.KernelDir, "patch", checkArgs...)
 	if err != nil {
 		// Try reverse check to see if already applied
 		reverseArgs := []string{"-p1", "--dry-run", "-R", "-i", patchPath}
@@ -73,19 +61,9 @@ func (m *Manager) Apply(ctx context.Context, patchFile string) error {
 
 // Reverse reverses a previously applied patch.
 func (m *Manager) Reverse(ctx context.Context, patchFile string) error {
-	patchPath := patchFile
-
-	if filepath.IsAbs(patchPath) {
-		if !m.fs.Exists(patchPath) {
-			return fmt.Errorf("patch file not found: %s", patchFile)
-		}
-	} else {
-		patchPath = strings.TrimPrefix(patchPath, "patches/")
-		fullPath := filepath.Join(m.cfg.Paths.PatchesDir, patchPath)
-		if !m.fs.Exists(fullPath) {
-			return fmt.Errorf("patch file not found: %s", patchFile)
-		}
-		patchPath = fullPath
+	patchPath, err := m.resolvePatchPath(patchFile)
+	if err != nil {
+		return err
 	}
 
 	reverseArgs := []string{"-p1", "-R", "-i", patchPath}
@@ -94,6 +72,48 @@ func (m *Manager) Reverse(ctx context.Context, patchFile string) error {
 	}
 
 	return nil
+}
+
+func (m *Manager) resolvePatchPath(patchFile string) (string, error) {
+	patchPath := patchFile
+
+	if !filepath.IsAbs(patchPath) {
+		if strings.Contains(patchPath, "..") {
+			return "", fmt.Errorf("invalid patch path %q: %w", patchFile, ErrPathTraversal)
+		}
+		patchPath = strings.TrimPrefix(patchPath, "patches/")
+		patchPath = filepath.Join(m.cfg.Paths.PatchesDir, patchPath)
+	}
+
+	if err := m.validatePathConfinement(patchPath); err != nil {
+		return "", err
+	}
+
+	if !m.fs.Exists(patchPath) {
+		return "", fmt.Errorf("patch file not found: %s", patchFile)
+	}
+
+	return patchPath, nil
+}
+
+func (m *Manager) validatePathConfinement(targetPath string) error {
+	cleanTarget, err := filepath.Abs(filepath.Clean(targetPath))
+	if err != nil {
+		return fmt.Errorf("failed to resolve target path: %w", err)
+	}
+
+	allowedBases := []string{m.cfg.Paths.PatchesDir, m.cfg.Paths.ProjectRoot}
+	for _, base := range allowedBases {
+		cleanBase, baseErr := filepath.Abs(filepath.Clean(base))
+		if baseErr != nil {
+			continue
+		}
+		if cleanTarget == cleanBase || strings.HasPrefix(cleanTarget, cleanBase+string(filepath.Separator)) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("path %q escapes workspace boundaries: %w", targetPath, ErrPathTraversal)
 }
 
 // List returns all available patches.

@@ -2,8 +2,11 @@ package commands
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/NguyenTrongPhuc552003/elmos/core/domain/toolchain"
 	"github.com/spf13/cobra"
 )
 
@@ -14,22 +17,24 @@ func BuildToolchains(ctx *Context) *cobra.Command {
 		Short: "Manage cross-compiler toolchains (crosstool-ng)",
 		Long: `Manage cross-compiler toolchains using crosstool-ng.
 
-Subcommands allow you to install crosstool-ng, list available targets,
+Subcommands allow you to clone crosstool-ng, list available targets,
 select a target configuration, build toolchains, and more.
 
 Examples:
-  elmos toolchains install              # Install crosstool-ng
-  elmos toolchains list                 # List available target samples
+  elmos toolchains clone                # Clone and install crosstool-ng
+  elmos toolchains list                 # List target samples for active arch
   elmos toolchains riscv64-unknown-linux-gnu  # Select target
   elmos toolchains build                # Build the selected toolchain
-  elmos toolchains build -j8            # Build with 8 parallel jobs`,
+  elmos toolchains build -j8            # Build with 8 parallel jobs
+  elmos toolchains install              # Symlink built toolchain to workspace`,
 	}
 
 	toolchainsCmd.AddCommand(
-		buildToolchainInstallCmd(ctx),
+		buildToolchainCloneCmd(ctx),
 		buildToolchainListCmd(ctx),
 		buildToolchainStatusCmd(ctx),
 		buildToolchainBuildCmd(ctx),
+		buildToolchainInstallCmd(ctx),
 		buildToolchainMenuconfigCmd(ctx),
 		buildToolchainCleanCmd(ctx),
 		buildToolchainEnvCmd(ctx),
@@ -38,16 +43,17 @@ Examples:
 	return toolchainsCmd
 }
 
-// buildToolchainInstallCmd creates the toolchains install subcommand.
-func buildToolchainInstallCmd(ctx *Context) *cobra.Command {
+// buildToolchainCloneCmd creates the toolchains clone subcommand.
+func buildToolchainCloneCmd(ctx *Context) *cobra.Command {
 	return &cobra.Command{
-		Use:   "install",
-		Short: "Install crosstool-ng from latest git",
+		Use:   "clone",
+		Short: "Clone and install crosstool-ng from latest git",
+		Long:  "Download and install crosstool-ng toolchain builder from upstream git repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := ctx.AppContext.EnsureMounted(); err != nil {
 				return err
 			}
-			ctx.Printer.Step("Installing crosstool-ng...")
+			ctx.Printer.Step("Cloning crosstool-ng...")
 			if err := ctx.ToolchainManager.Install(cmd.Context()); err != nil {
 				return err
 			}
@@ -57,11 +63,103 @@ func buildToolchainInstallCmd(ctx *Context) *cobra.Command {
 	}
 }
 
+// buildToolchainInstallCmd creates the toolchains install subcommand for symlinking.
+func buildToolchainInstallCmd(ctx *Context) *cobra.Command {
+	return &cobra.Command{
+		Use:   "install",
+		Short: "Create symbolic links to built toolchain in workspace",
+		Long: `Create symbolic links from the built toolchain to the current workspace.
+
+This makes the cross-compiler accessible for kernel and module builds.
+The toolchain must be built first using 'elmos toolchains build'.
+
+Examples:
+  elmos toolchains install           # Install to current workspace
+  elmos toolchains install --force   # Force reinstall (recreate links)`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runToolchainInstall(ctx)
+		},
+	}
+}
+
+func runToolchainInstall(ctx *Context) error {
+	if err := ctx.AppContext.EnsureMounted(); err != nil {
+		return err
+	}
+
+	toolchains, err := ctx.ToolchainManager.GetInstalledToolchains()
+	if err != nil {
+		return err
+	}
+	if len(toolchains) == 0 {
+		ctx.Printer.Warn("No toolchains built yet")
+		ctx.Printer.Info("  Run: elmos toolchains build")
+		return nil
+	}
+
+	targetToolchain := selectInstalledToolchain(toolchains, ctx.Config.Build.Arch)
+	if targetToolchain == nil {
+		printAvailableToolchains(ctx, toolchains)
+		return nil
+	}
+
+	return linkCurrentToolchain(ctx, targetToolchain.Target)
+}
+
+func selectInstalledToolchain(toolchains []toolchain.ToolchainInfo, arch string) *toolchain.ToolchainInfo {
+	for i := range toolchains {
+		tc := toolchains[i]
+		if !tc.Installed {
+			continue
+		}
+		if strings.Contains(tc.Target, arch) || (arch == "arm64" && strings.Contains(tc.Target, "aarch64")) {
+			return &toolchains[i]
+		}
+	}
+	return nil
+}
+
+func printAvailableToolchains(ctx *Context, toolchains []toolchain.ToolchainInfo) {
+	arch := ctx.Config.Build.Arch
+	ctx.Printer.Warn("No built toolchain found for architecture: %s", arch)
+	ctx.Printer.Info("  Available toolchains:")
+	for _, tc := range toolchains {
+		if tc.Installed {
+			ctx.Printer.Info("    • %s", tc.Target)
+		}
+	}
+}
+
+func linkCurrentToolchain(ctx *Context, target string) error {
+	workspaceToolchainDir := filepath.Join(ctx.Config.Paths.ToolchainsDir, "current")
+	sourceDir := filepath.Join(ctx.ToolchainManager.Paths().XTools, target)
+
+	ctx.Printer.Step("Creating symlink: %s → %s", workspaceToolchainDir, sourceDir)
+
+	if ctx.FS.Exists(workspaceToolchainDir) {
+		if err := os.Remove(workspaceToolchainDir); err != nil && !os.IsNotExist(err) {
+			ctx.Printer.Warn("Failed to remove existing link: %v", err)
+		}
+	}
+
+	if err := os.MkdirAll(filepath.Dir(workspaceToolchainDir), 0755); err != nil {
+		return fmt.Errorf("failed to create parent directory: %w", err)
+	}
+
+	if err := os.Symlink(sourceDir, workspaceToolchainDir); err != nil {
+		return fmt.Errorf("failed to create symlink: %w", err)
+	}
+
+	ctx.Printer.Success("Toolchain installed! (%s)", target)
+	ctx.Printer.Info("  Toolchain available at: %s", workspaceToolchainDir)
+	return nil
+}
+
 // buildToolchainListCmd creates the toolchains list subcommand.
 func buildToolchainListCmd(ctx *Context) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "List available toolchain samples",
+		Short: "List available toolchain samples for active architecture",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			samples, err := ctx.ToolchainManager.ListSamples(cmd.Context())
 			if err != nil {
@@ -71,8 +169,46 @@ func buildToolchainListCmd(ctx *Context) *cobra.Command {
 				ctx.Printer.Info("No samples found")
 				return nil
 			}
+
+			arch := ctx.Config.Build.Arch
+			filtered := filterSamplesByArch(samples, arch)
+			if len(filtered) == 0 {
+				ctx.Printer.Warn("No toolchain samples matched architecture: %s", arch)
+				return nil
+			}
+
+			ctx.Printer.Info("Toolchain samples for %s:", arch)
+			for _, sample := range filtered {
+				ctx.Printer.Print("  %s", sample)
+			}
 			return nil
 		},
+	}
+}
+
+func filterSamplesByArch(samples []string, arch string) []string {
+	var filtered []string
+	for _, sample := range samples {
+		if isSampleRelevantForArch(sample, arch) {
+			filtered = append(filtered, sample)
+		}
+	}
+	return filtered
+}
+
+func isSampleRelevantForArch(sample, arch string) bool {
+	sample = strings.ToLower(sample)
+	arch = strings.ToLower(arch)
+
+	switch arch {
+	case "arm64":
+		return strings.Contains(sample, "aarch64") || strings.Contains(sample, "arm64")
+	case "arm":
+		return strings.Contains(sample, "arm") && !strings.Contains(sample, "aarch64")
+	case "riscv":
+		return strings.Contains(sample, "riscv")
+	default:
+		return strings.Contains(sample, arch)
 	}
 }
 
@@ -91,7 +227,7 @@ func buildToolchainStatusCmd(ctx *Context) *cobra.Command {
 func showToolchainStatus(ctx *Context) error {
 	if !ctx.ToolchainManager.IsInstalled() {
 		ctx.Printer.Warn("crosstool-ng not installed")
-		ctx.Printer.Print("  Run: elmos toolchains install")
+		ctx.Printer.Print("  Run: elmos toolchains clone")
 		return nil
 	}
 	ctx.Printer.Success("crosstool-ng installed at %s", ctx.ToolchainManager.Paths().CrosstoolNG)

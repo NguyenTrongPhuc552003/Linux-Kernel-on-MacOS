@@ -76,10 +76,8 @@ func (m *Manager) GetCtNgPath() string {
 // ListSamples lists available crosstool-ng sample configurations.
 func (m *Manager) ListSamples(ctx context.Context) ([]string, error) {
 	if !m.IsInstalled() {
-		return nil, fmt.Errorf("crosstool-ng not installed, run 'elmos toolchains install'")
+		return nil, fmt.Errorf("crosstool-ng not installed, run 'elmos toolchains clone'")
 	}
-
-	m.printer.Print("Available targets:")
 
 	// Use os/exec directly to stream output
 	cmd := exec.CommandContext(ctx, m.GetCtNgPath(), "list-samples")
@@ -109,9 +107,6 @@ func (m *Manager) ListSamples(ctx context.Context) ([]string, error) {
 			if len(parts) >= 2 {
 				sample := parts[len(parts)-1]
 				samples = append(samples, sample)
-
-				// Print immediately for real-time feedback
-				m.printer.Print("  %s", sample)
 			}
 		}
 	}

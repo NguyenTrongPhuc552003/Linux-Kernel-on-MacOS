@@ -12,10 +12,12 @@ import (
 	"github.com/NguyenTrongPhuc552003/elmos/core/domain/doctor"
 	"github.com/NguyenTrongPhuc552003/elmos/core/domain/emulator"
 	"github.com/NguyenTrongPhuc552003/elmos/core/domain/patch"
+	_ "github.com/NguyenTrongPhuc552003/elmos/core/domain/plugin/builtin"
 	"github.com/NguyenTrongPhuc552003/elmos/core/domain/rootfs"
 	"github.com/NguyenTrongPhuc552003/elmos/core/domain/toolchain"
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/executor"
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/filesystem"
+	"github.com/NguyenTrongPhuc552003/elmos/core/plugin"
 	"github.com/NguyenTrongPhuc552003/elmos/core/ui"
 )
 
@@ -37,6 +39,14 @@ type App struct {
 	Printer          *ui.Printer
 	Verbose          bool
 	ConfigFile       string
+
+	// ========== NEW v2.0 FIELDS ==========
+
+	// HookExecutor manages build lifecycle hooks from plugins
+	HookExecutor *plugin.HookExecutor
+
+	// PluginRegistry manages loaded plugins
+	PluginRegistry *plugin.Registry
 }
 
 // New creates a new App with all dependencies wired up.
@@ -45,7 +55,22 @@ func New(exec executor.Executor, fs filesystem.FileSystem, cfg *config.Config) *
 	printer := ui.NewPrinter()
 	tm := toolchain.NewManager(exec, fs, cfg, printer)
 
-	return &App{
+	// Initialize plugin system
+	hookExecutor := plugin.NewHookExecutor(printer, cfg.Build.Verbose)
+	pluginRegistry := plugin.NewRegistry(hookExecutor, printer, cfg.Build.Verbose)
+
+	// Load builtin plugins
+	// Convert plugin entries to map[string]interface{} for flexibility
+	pluginConfigMap := make(map[string]interface{})
+	for name, entry := range cfg.Plugins.Plugins {
+		pluginConfigMap[name] = entry
+	}
+	if err := pluginRegistry.LoadBuiltins(ctx, pluginConfigMap); err != nil {
+		// Log error but don't fail - plugins are optional
+		printer.Warn("Failed to load some plugins: %v", err)
+	}
+
+	app := &App{
 		Exec:             exec,
 		FS:               fs,
 		Config:           cfg,
@@ -60,15 +85,19 @@ func New(exec executor.Executor, fs filesystem.FileSystem, cfg *config.Config) *
 		PatchManager:     patch.NewManager(exec, fs, cfg),
 		ToolchainManager: tm,
 		Printer:          printer,
+		HookExecutor:     hookExecutor,
+		PluginRegistry:   pluginRegistry,
 	}
+
+	return app
 }
 
 // BuildRootCommand builds the root cobra command with all subcommands.
 func (a *App) BuildRootCommand() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "elmos",
-		Short: "Embedded Linux on MacOS - Native kernel build tools",
-		Long: `ELMOS provides native Linux kernel build tools for macOS.
+		Short: "Embedded Linux SDK - Native kernel build tools",
+		Long: `ELMOS provides native Linux kernel build tools for embedded development.
 
 Common workflow:
   elmos init              # Initialize workspace
@@ -97,7 +126,7 @@ Common workflow:
 	}
 
 	rootCmd.PersistentFlags().BoolVarP(&a.Verbose, "verbose", "e", false, "enable verbose output")
-	rootCmd.PersistentFlags().StringVarP(&a.ConfigFile, "config", "c", "", "config file (default is elmos.yaml)")
+	rootCmd.PersistentFlags().StringVarP(&a.ConfigFile, "config", "c", "", "config file path (auto-detected as <workspace>/<workspace>.yaml if omitted)")
 
 	// Create command context and register all commands
 	cmdCtx := &commands.Context{
@@ -117,6 +146,9 @@ Common workflow:
 		Printer:          a.Printer,
 		Verbose:          &a.Verbose,
 		ConfigFile:       &a.ConfigFile,
+		// NEW v2.0 plugin fields
+		HookExecutor:   a.HookExecutor,
+		PluginRegistry: a.PluginRegistry,
 	}
 
 	commands.Register(cmdCtx, rootCmd)

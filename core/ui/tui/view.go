@@ -87,7 +87,7 @@ func (m Model) getRightPanelTitle() string {
 		return m.spinner.View() + " " + m.currentTask
 	}
 	if m.inputMode {
-		return "📝 Input Required"
+		return ">> Input Required"
 	}
 	return "Output"
 }

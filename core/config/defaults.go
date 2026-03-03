@@ -99,3 +99,67 @@ var KernelConfigTypes = []string{
 	"localmodconfig",
 	"localyesconfig",
 }
+
+// DefaultMachine returns the default machine definition for rock5b_plus.
+// This is the example machine used for testing and as a reference.
+func DefaultMachine() *MachineDefinition {
+	return &MachineDefinition{
+		Name:         "rock5b_plus",
+		Manufacturer: "Radxa",
+		Description:  "Radxa ROCK 5B+ with Rockchip RK3588",
+		Tags: []string{
+			"arm64", "armv8", "rockchip", "rk3588", "production-ready",
+		},
+		Kernel: MachineKernelConfig{
+			Arch:      "arm64",
+			Defconfig: "rock5b_defconfig",
+			DeviceTrees: []string{
+				"rk3588-rock-5b.dtb",
+			},
+		},
+		Bootloader: MachineBootloaderConfig{
+			Type:      "u-boot",
+			Repo:      "https://github.com/u-boot/u-boot.git",
+			Version:   "v2024.01",
+			Defconfig: "rock5b_plus_defconfig",
+			Binary:    "u-boot.itb",
+			Firmware: []FirmwareBlob{
+				{
+					Name:     "DDR Initialization",
+					Src:      "rk3588_ddr.bin",
+					BlobName: "rk3588_ddr.bin",
+					Required: true,
+				},
+				{
+					Name:     "Miniloader",
+					Src:      "rk3588_miniloader.elf",
+					BlobName: "rk3588_miniloader.elf",
+					Required: true,
+				},
+			},
+			Flash: FlashConfig{
+				Method:        "rkdevtool",
+				OffsetMb:      0,
+				DevicePattern: "/dev/sd*",
+			},
+		},
+		QEMU: MachineQEMUConfig{
+			System:  "qemu-system-aarch64",
+			Machine: "virt",
+			CPU:     "cortex-a72",
+			Memory:  "2G",
+			Network: "user",
+			Console: "ttyAMA0",
+			SMP:     2,
+		},
+		Rootfs: MachineRootfsConfig{
+			ExtraPackages: []string{
+				"u-boot-tools",
+				"openssh-server",
+			},
+			KernelModules: []string{
+				"rk_crypto",
+			},
+		},
+	}
+}

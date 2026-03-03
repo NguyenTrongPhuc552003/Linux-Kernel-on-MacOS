@@ -6,56 +6,46 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/NguyenTrongPhuc552003/elmos/core/config"
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/executor"
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/filesystem"
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/homebrew"
+	"github.com/NguyenTrongPhuc552003/elmos/core/infra/platform"
 )
 
 // Context holds the current build context and state.
 type Context struct {
-	Config  *config.Config
-	Exec    executor.Executor
-	FS      filesystem.FileSystem
-	Brew    *homebrew.Resolver
-	Verbose bool
+	Config   *config.Config
+	Exec     executor.Executor
+	FS       filesystem.FileSystem
+	Brew     *homebrew.Resolver // TODO(platform): replace with Platform.Packages() once GetLibexecBin is in interface
+	Platform platform.Platform
+	Verbose  bool
 }
 
 // New creates a new build context with the given dependencies.
 func New(cfg *config.Config, exec executor.Executor, fs filesystem.FileSystem) *Context {
-	return &Context{
-		Config: cfg,
-		Exec:   exec,
-		FS:     fs,
-		Brew:   homebrew.NewResolver(exec),
+	ctx := &Context{
+		Config:   cfg,
+		Exec:     exec,
+		FS:       fs,
+		Platform: platform.CurrentWithExecutor(exec),
 	}
+	// Homebrew resolver is only useful on macOS.
+	if runtime.GOOS == "darwin" {
+		ctx.Brew = homebrew.NewResolver(exec)
+	}
+	return ctx
 }
 
 // IsMounted checks if the kernel volume is currently mounted.
 func (ctx *Context) IsMounted() bool {
-	mountPoint := ctx.Config.Image.MountPoint
-
-	// Check if the directory exists first
-	if !ctx.FS.IsDir(mountPoint) {
-		// It might be mounted at a different location
-		// Check hdiutil info for our image file path
-		out, err := ctx.Exec.Output(gocontext.Background(), "hdiutil", "info")
-		if err != nil {
-			return false
-		}
-		// Check if our image file is mounted (regardless of mount point)
-		return strings.Contains(string(out), ctx.Config.Image.Path)
-	}
-
-	// Verify it's actually a mount point using 'mount'
-	out, err := ctx.Exec.Output(gocontext.Background(), "mount")
-	if err != nil {
-		return false
-	}
-
-	return strings.Contains(string(out), mountPoint)
+	name := ctx.Config.Image.VolumeName
+	mounted, _, err := ctx.Platform.DiskImage().IsMounted(gocontext.Background(), name)
+	return err == nil && mounted
 }
 
 // EnsureMounted ensures the kernel volume is mounted.
@@ -66,59 +56,23 @@ func (ctx *Context) EnsureMounted() error {
 	return nil
 }
 
-// GetMountPoint returns the actual mount point path of the kernel volume.
+// GetActualMountPoint returns the actual mount point path of the kernel volume.
 // This handles cases where the volume is mounted at a different location (e.g. " 1" suffix).
 func (ctx *Context) GetActualMountPoint() (string, error) {
-	mountPoint := ctx.Config.Image.MountPoint
-
 	// Fast path: if configured path exists
-	if ctx.FS.IsDir(mountPoint) {
-		return mountPoint, nil
+	if ctx.FS.IsDir(ctx.Config.Image.MountPoint) {
+		return ctx.Config.Image.MountPoint, nil
 	}
-
-	// Slow path: check hdiutil info for our specific image file
-	out, err := ctx.Exec.Output(gocontext.Background(), "hdiutil", "info")
+	// Ask platform layer for the actual mount point
+	name := ctx.Config.Image.VolumeName
+	mounted, mp, err := ctx.Platform.DiskImage().IsMounted(gocontext.Background(), name)
 	if err != nil {
 		return "", err
 	}
-
-	return parseMountPointFromHdiutil(string(out), ctx.Config.Image.Path)
-}
-
-// parseMountPointFromHdiutil extracts the mount point for an image from hdiutil info output.
-func parseMountPointFromHdiutil(output, imagePath string) (string, error) {
-	lines := strings.Split(output, "\n")
-
-	// Find the image block and look for mount point
-	foundImage := false
-	for i, line := range lines {
-		if strings.Contains(line, imagePath) {
-			foundImage = true
-			// Look for /Volumes/ in subsequent lines (up to 20 lines)
-			if mp := findMountPointInLines(lines, i+1, i+20); mp != "" {
-				return mp, nil
-			}
-			break
-		}
+	if !mounted {
+		return "", fmt.Errorf("image not mounted: %s", ctx.Config.Image.Path)
 	}
-
-	if !foundImage {
-		return "", fmt.Errorf("image not mounted: %s", imagePath)
-	}
-	return "", fmt.Errorf("volume not found")
-}
-
-// findMountPointInLines searches for a /Volumes/ path in a range of lines.
-func findMountPointInLines(lines []string, start, end int) string {
-	for j := start; j < len(lines) && j < end; j++ {
-		if idx := strings.Index(lines[j], "/Volumes/"); idx != -1 {
-			mountStr := strings.TrimSpace(lines[j][idx:])
-			if parts := strings.Fields(mountStr); len(parts) > 0 {
-				return parts[0]
-			}
-		}
-	}
-	return ""
+	return mp, nil
 }
 
 // KernelExists checks if the kernel source directory exists.
@@ -160,25 +114,11 @@ func (ctx *Context) GetMakeEnv() []string {
 	originalPath := os.Getenv("PATH")
 	newPath := originalPath
 
-	// Prepend GNU tools to PATH
-	if gnuSed := ctx.Brew.GetLibexecBin("gnu-sed"); gnuSed != "" {
-		newPath = gnuSed + string(os.PathListSeparator) + newPath
-	}
-	if coreutils := ctx.Brew.GetLibexecBin("coreutils"); coreutils != "" {
-		newPath = coreutils + string(os.PathListSeparator) + newPath
-	}
-
-	// LLVM toolchain
-	if llvmBin := ctx.Brew.GetBin("llvm"); llvmBin != "" {
-		newPath = llvmBin + string(os.PathListSeparator) + newPath
-	}
-	if lldBin := ctx.Brew.GetBin("lld"); lldBin != "" {
-		newPath = lldBin + string(os.PathListSeparator) + newPath
-	}
-
-	// e2fsprogs (sbin)
-	if e2fsBin := ctx.Brew.GetSbin("e2fsprogs"); e2fsBin != "" {
-		newPath = e2fsBin + string(os.PathListSeparator) + newPath
+	// On macOS, prepend Homebrew tool directories to PATH so GNU tools
+	// take precedence over BSD variants. On Linux, tools are already
+	// the GNU versions and live on the standard PATH.
+	if runtime.GOOS == "darwin" && ctx.Brew != nil {
+		newPath = ctx.prependBrewToolPaths(originalPath)
 	}
 
 	// Reconstruct env, skipping original PATH
@@ -196,7 +136,7 @@ func (ctx *Context) GetMakeEnv() []string {
 		"CROSS_COMPILE="+cfg.Build.CrossCompile,
 	)
 
-	// Add HOSTCFLAGS for macOS compatibility
+	// Add HOSTCFLAGS (macOS needs special flags; Linux does not)
 	hostcflags := ctx.buildHostCFlags()
 	if hostcflags != "" {
 		env = append(env, "HOSTCFLAGS="+hostcflags)
@@ -205,28 +145,54 @@ func (ctx *Context) GetMakeEnv() []string {
 	return env
 }
 
-// buildHostCFlags constructs the HOSTCFLAGS for macOS kernel builds.
-func (ctx *Context) buildHostCFlags() string {
-	var flags []string
+// prependBrewToolPaths adds Homebrew tool directories to PATH (macOS only).
+func (ctx *Context) prependBrewToolPaths(currentPath string) string {
+	newPath := currentPath
+	if gnuSed := ctx.Brew.GetLibexecBin("gnu-sed"); gnuSed != "" {
+		newPath = gnuSed + string(os.PathListSeparator) + newPath
+	}
+	if coreutils := ctx.Brew.GetLibexecBin("coreutils"); coreutils != "" {
+		newPath = coreutils + string(os.PathListSeparator) + newPath
+	}
+	if llvmBin := ctx.Brew.GetBin("llvm"); llvmBin != "" {
+		newPath = llvmBin + string(os.PathListSeparator) + newPath
+	}
+	if lldBin := ctx.Brew.GetBin("lld"); lldBin != "" {
+		newPath = lldBin + string(os.PathListSeparator) + newPath
+	}
+	if e2fsBin := ctx.Brew.GetSbin("e2fsprogs"); e2fsBin != "" {
+		newPath = e2fsBin + string(os.PathListSeparator) + newPath
+	}
+	return newPath
+}
 
-	// Custom macOS headers
+// buildHostCFlags constructs the HOSTCFLAGS for kernel builds.
+// On macOS, adds Homebrew libelf include path and compatibility defines.
+// On Linux, system headers are in standard paths; only add LibrariesDir if set.
+func (ctx *Context) buildHostCFlags() string {
+	if runtime.GOOS != "darwin" {
+		if ctx.Config.Paths.LibrariesDir != "" {
+			return "-I" + ctx.Config.Paths.LibrariesDir
+		}
+		return ""
+	}
+
+	// macOS: need Homebrew libelf + compatibility defines
+	var flags []string
 	if ctx.Config.Paths.LibrariesDir != "" {
 		flags = append(flags, "-I"+ctx.Config.Paths.LibrariesDir)
 	}
-
-	// libelf include path (from Homebrew)
-	if libelfInclude := ctx.Brew.GetInclude("libelf"); libelfInclude != "" {
-		flags = append(flags, "-I"+libelfInclude)
+	if ctx.Brew != nil {
+		if libelfInclude := ctx.Brew.GetInclude("libelf"); libelfInclude != "" {
+			flags = append(flags, "-I"+libelfInclude)
+		}
 	}
-
-	// macOS compatibility flags
 	flags = append(flags,
 		"-D_UUID_T",
 		"-D__GETHOSTUUID_H",
 		"-D_DARWIN_C_SOURCE",
 		"-D_FILE_OFFSET_BITS=64",
 	)
-
 	return strings.Join(flags, " ")
 }
 

@@ -1,0 +1,62 @@
+# Machine Definition: Radxa ROCK 5B+
+# Reference: assets/schemas/machine.schema.json
+
+machine:
+  name: "rock5b_plus"
+  manufacturer: "Radxa"
+  description: "Radxa ROCK 5B+ single-board computer with Rockchip RK3588"
+
+  tags:
+    - arm64
+    - armv8
+    - rockchip
+    - rk3588
+    - production-ready
+
+  kernel:
+    arch: "arm64"
+    defconfig: "rock5b_defconfig"
+    device_trees:
+      - "rk3588-rock-5b.dtb"
+      - "rk3588-rock-5b-plus.dtb"
+
+  bootloader:
+    type: "u-boot"
+    repo: "https://github.com/u-boot/u-boot.git"
+    version: "v2024.01"
+    defconfig: "rock5b_plus_defconfig"
+    binary: "u-boot.itb"
+    firmware:
+      - name: "DDR Initialization"
+        src: "https://github.com/rockchip-linux/rkbin/raw/master/bin/rk35/rk3588_ddr_lp4_2112MHz_lp5_2736MHz_v1.16.bin"
+        blob_name: "rk3588_ddr.bin"
+        checksum: ""
+        required: true
+      - name: "Miniloader"
+        src: "https://github.com/rockchip-linux/rkbin/raw/master/bin/rk35/rk3588_miniloader_v1.35.bin"
+        blob_name: "rk3588_miniloader.bin"
+        checksum: ""
+        required: true
+    flash:
+      method: "rkdevtool"
+      offset_mb: 0
+      device_pattern: "/dev/sd*"
+
+  qemu:
+    system: "qemu-system-aarch64"
+    machine: "virt"
+    cpu: "cortex-a72"
+    memory: "4G"
+    network: "user"
+    console: "ttyAMA0"
+    smp: 4
+
+  rootfs:
+    extra_packages:
+      - "u-boot-tools"
+      - "openssh-server"
+      - "python3"
+      - "i2c-tools"
+    kernel_modules:
+      - "rk_crypto"
+      - "pwm_fan"

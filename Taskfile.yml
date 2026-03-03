@@ -85,11 +85,12 @@ tasks:
       - task: dev:lint
 
   dev:complexity:install:
-    desc: Install go-complexity-analysis tool for CC/MI analysis
+    desc: Install complexity tools for CC/MI analysis
     cmds:
-      - echo "Installing go-complexity-analysis..."
-      - go install github.com/firepear/go-complexity-analysis/cmd/complexity@latest
-      - echo "Installed to $(go env GOPATH)/bin/complexity"
+      - echo "Installing gocyclo and maintidx..."
+      - go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+      - go install github.com/yagipy/maintidx/cmd/maintidx@latest
+      - echo "Installed to $(go env GOPATH)/bin/{gocyclo,maintidx}"
 
   dev:complexity:
     desc: Run cyclomatic complexity analysis (CC>10, MI<30)
@@ -98,12 +99,25 @@ tasks:
       MI_THRESHOLD: '{{.MI_THRESHOLD | default "30"}}'
     cmds:
       - |
-        if [ ! -f "$(go env GOPATH)/bin/complexity" ]; then
-          echo "Error: complexity tool not installed. Run 'task dev:complexity:install' first."
+        if [ ! -f "$(go env GOPATH)/bin/gocyclo" ] || [ ! -f "$(go env GOPATH)/bin/maintidx" ]; then
+          echo "Error: complexity tools not installed. Run 'task dev:complexity:install' first."
           exit 1
         fi
         echo "Running complexity analysis (CC>{{.CC_THRESHOLD}}, MI<{{.MI_THRESHOLD}})..."
-        go vet -vettool=$(go env GOPATH)/bin/complexity --cycloover {{.CC_THRESHOLD}} --maintunder {{.MI_THRESHOLD}} ./... 2>&1 | grep -v "undefined" || echo "✓ No complexity warnings!"
+        cyclo_output=$($(go env GOPATH)/bin/gocyclo -over {{.CC_THRESHOLD}} . || true)
+        mi_output=$(go vet -vettool=$(go env GOPATH)/bin/maintidx ./... 2>&1 || true)
+
+        if [ -n "$cyclo_output" ]; then
+          echo "$cyclo_output"
+          exit 1
+        fi
+
+        if echo "$mi_output" | grep -q "maintidx:"; then
+          echo "$mi_output" | grep "maintidx:" || true
+          exit 1
+        fi
+
+        echo "✓ No complexity warnings!"
 
   dev:setup:
     desc: Full dev setup (deps + build + init workspace + tools)
@@ -150,6 +164,22 @@ tasks:
       - echo "Building for darwin/amd64..."
       - GOOS=darwin GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o {{.BINARY}}-darwin-amd64 .
 
+  release:linux:
+    desc: Build release binaries for Linux (amd64 + arm64)
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - echo "Building for linux/amd64..."
+      - GOOS=linux GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o {{.BINARY}}-linux-amd64 ./cmd/elmos
+      - echo "Building for linux/arm64..."
+      - GOOS=linux GOARCH=arm64 go build -ldflags "{{.LDFLAGS}}" -o {{.BINARY}}-linux-arm64 ./cmd/elmos
+
+  release:windows:
+    desc: Build release binary for Windows amd64 (requires WSL2 at runtime)
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - echo "Building for windows/amd64..."
+      - GOOS=windows GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o {{.BINARY}}-windows-amd64.exe ./cmd/elmos
+
   release:completions:
     desc: Generate shell completions
     deps: [build]
@@ -164,6 +194,8 @@ tasks:
     desc: Full release (all platforms + completions)
     cmds:
       - task: release:darwin
+      - task: release:linux
+      - task: release:windows
       - task: release:completions
 
   release:homebrew:

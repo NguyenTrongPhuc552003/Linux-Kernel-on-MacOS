@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NguyenTrongPhuc552003/elmos/assets/schemas/workspace.schema.json",
+  "title": "ELMOS Workspace Configuration",
+  "description": "Schema for the elmos.yml / default.yml workspace configuration file.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "machine": {
+      "type": "string",
+      "description": "Default target machine name (overridden by MACHINE env or --machine flag)",
+      "examples": [
+        "rock5b_plus",
+        "orange_pi_5"
+      ]
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "volume_name": {
+          "type": "string",
+          "description": "Workspace volume/directory name",
+          "default": "elmos"
+        },
+        "size": {
+          "type": "string",
+          "description": "Disk image size (e.g. 40G, 80G, 1T)",
+          "pattern": "^[0-9]+(G|g|T|t|M|m)$",
+          "default": "40G"
+        },
+        "path": {
+          "type": "string",
+          "description": "Absolute path to sparse image file"
+        },
+        "mount_point": {
+          "type": "string",
+          "description": "Mount point path (auto-derived from volume_name)"
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "arch": {
+          "type": "string",
+          "enum": [
+            "arm64",
+            "arm",
+            "riscv",
+            "x86",
+            "x86_64",
+            "mips"
+          ],
+          "default": "arm64"
+        },
+        "jobs": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Parallel build jobs (defaults to nCPU)"
+        },
+        "llvm": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use LLVM/Clang toolchain"
+        },
+        "cross_compile": {
+          "type": "string",
+          "description": "CROSS_COMPILE prefix",
+          "default": "llvm-"
+        },
+        "verbose": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "qemu": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memory": {
+          "type": "string",
+          "default": "2G",
+          "examples": [
+            "2G",
+            "4G"
+          ]
+        },
+        "gdb_port": {
+          "type": "integer",
+          "default": 1234
+        },
+        "ssh_port": {
+          "type": "integer",
+          "default": 2222
+        },
+        "smp": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "bootloader": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "u-boot",
+            "barebox"
+          ]
+        },
+        "repo": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "patches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "plugins": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "array",
+          "description": "Additional user plugins to enable",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disabled": {
+          "type": "array",
+          "description": "Builtin plugins to disable",
+          "items": {
+            "type": "string"
+          }
+        },
+        "search_paths": {
+          "type": "array",
+          "description": "Directories to search for user plugins",
+          "items": {
+            "type": "string"
+          }
+        },
+        "plugins": {
+          "type": "object",
+          "description": "Per-plugin configuration entries",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "user"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "config": {
+                "type": "object",
+                "description": "Plugin-specific configuration"
+              }
+            }
+          }
+        }
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "description": "Named build profiles (e.g. debug, release, minimal)",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "arch": {
+            "type": "string"
+          },
+          "jobs": {
+            "type": "integer"
+          },
+          "memory": {
+            "type": "string"
+          },
+          "cross_compile": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "description": "Path overrides (rarely needed; defaults are derived from mount point)",
+      "additionalProperties": false,
+      "properties": {
+        "project_root": {
+          "type": "string"
+        },
+        "kernel_dir": {
+          "type": "string"
+        },
+        "modules_dir": {
+          "type": "string"
+        },
+        "apps_dir": {
+          "type": "string"
+        },
+        "libraries_dir": {
+          "type": "string"
+        },
+        "patches_dir": {
+          "type": "string"
+        },
+        "rootfs_dir": {
+          "type": "string"
+        },
+        "disk_image": {
+          "type": "string"
+        },
+        "debian_mirror": {
+          "type": "string"
+        },
+        "toolchains_dir": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

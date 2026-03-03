@@ -62,14 +62,14 @@ func BuildDoctor(ctx *Context) *cobra.Command {
 // getSection extracts section name from a check name.
 func getSection(name string) string {
 	// Match exact names first
-	if name == "Homebrew" {
+	if name == "Homebrew" || strings.HasPrefix(name, "Package Manager") {
 		return "Package Manager"
 	}
 	if name == "crosstool-ng" || strings.HasPrefix(name, "Toolchain:") {
 		return "Toolchains"
 	}
 
-	// Dynamic sections based on prefix "Scetion: Item"
+	// Dynamic sections based on prefix "Section: Item"
 	if idx := strings.Index(name, ": "); idx != -1 {
 		return name[:idx]
 	}

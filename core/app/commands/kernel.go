@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -26,6 +27,7 @@ func BuildKernel(ctx *Context) *cobra.Command {
 		buildKernelSwitchCmd(ctx),
 		buildKernelPullCmd(ctx),
 		buildKernelBuildCmd(ctx),
+		buildKernelInstallCmd(ctx),
 	)
 
 	return kernelCmd
@@ -242,6 +244,136 @@ func buildKernelBuildCmd(ctx *Context) *cobra.Command {
 	}
 	cmd.Flags().IntVarP(&jobs, "jobs", "j", 0, "Number of parallel build jobs")
 	return cmd
+}
+
+// buildKernelInstallCmd creates the kernel install subcommand.
+func buildKernelInstallCmd(ctx *Context) *cobra.Command {
+	return &cobra.Command{
+		Use:   "install",
+		Short: "Create symbolic links to built kernel artifacts",
+		Long: `Create symbolic links from built kernel artifacts to the workspace.
+
+Creates links for:
+  - Kernel image (Image, zImage, bzImage, vmlinuz)
+  - Device tree blobs (.dtb files)
+  - Kernel config (.config)
+  - System.map
+  - vmlinux (for debugging)
+
+The kernel must be built first using 'elmos kernel build'.
+
+Examples:
+  elmos kernel install           # Install to current workspace
+  elmos kernel install --force   # Force reinstall (recreate links)`,
+		RunE: RunEWithContext(ctx, func(cmd *cobra.Command, args []string) error {
+			return runKernelInstall(ctx)
+		}),
+	}
+}
+
+func runKernelInstall(ctx *Context) error {
+	kernelDir := ctx.Config.Paths.KernelDir
+	if !ctx.AppContext.KernelExists() {
+		ctx.Printer.Warn("Kernel source not found at %s", kernelDir)
+		ctx.Printer.Info("  Run: elmos kernel clone")
+		return nil
+	}
+
+	kernelImage := ctx.AppContext.GetKernelImage()
+	if !ctx.FS.Exists(kernelImage) {
+		ctx.Printer.Warn("Kernel not built yet")
+		ctx.Printer.Info("  Run: elmos kernel build")
+		return nil
+	}
+
+	installDir := filepath.Join(ctx.Config.Image.MountPoint, "kernel")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		return fmt.Errorf("failed to create install directory: %w", err)
+	}
+
+	ctx.Printer.Step("Installing kernel artifacts to: %s", installDir)
+	if err := installKernelCoreArtifacts(ctx, kernelDir, kernelImage, installDir); err != nil {
+		return err
+	}
+	if err := installKernelDTBs(ctx, kernelDir, installDir); err != nil {
+		return err
+	}
+
+	ctx.Printer.Success("Kernel artifacts installed!")
+	ctx.Printer.Info("  Install directory: %s", installDir)
+	return nil
+}
+
+func installKernelCoreArtifacts(ctx *Context, kernelDir, kernelImage, installDir string) error {
+	if err := createSymlink(ctx, kernelImage, filepath.Join(installDir, filepath.Base(kernelImage))); err != nil {
+		return err
+	}
+	ctx.Printer.Info("  ✓ %s", filepath.Base(kernelImage))
+
+	optional := map[string]string{
+		"vmlinux":    "vmlinux",
+		"System.map": "System.map",
+		".config":    "config",
+	}
+	for sourceName, targetName := range optional {
+		sourcePath := filepath.Join(kernelDir, sourceName)
+		if !ctx.FS.Exists(sourcePath) {
+			continue
+		}
+		if err := createSymlink(ctx, sourcePath, filepath.Join(installDir, targetName)); err != nil {
+			return err
+		}
+		ctx.Printer.Info("  ✓ %s", targetName)
+	}
+	return nil
+}
+
+func installKernelDTBs(ctx *Context, kernelDir, installDir string) error {
+	archConfig := ctx.Config.GetArchConfig()
+	if archConfig == nil {
+		return nil
+	}
+
+	dtbDir := filepath.Join(kernelDir, "arch", archConfig.KernelArch, "boot", "dts")
+	if !ctx.FS.Exists(dtbDir) {
+		return nil
+	}
+
+	dtbInstallDir := filepath.Join(installDir, "dtbs")
+	if err := os.MkdirAll(dtbInstallDir, 0755); err != nil {
+		return fmt.Errorf("failed to create DTB directory: %w", err)
+	}
+
+	dtbFiles, err := filepath.Glob(filepath.Join(dtbDir, "*.dtb"))
+	if err != nil {
+		return err
+	}
+	for _, dtbFile := range dtbFiles {
+		dtbName := filepath.Base(dtbFile)
+		if err := createSymlink(ctx, dtbFile, filepath.Join(dtbInstallDir, dtbName)); err != nil {
+			ctx.Printer.Warn("  Failed to install %s: %v", dtbName, err)
+			continue
+		}
+		ctx.Printer.Info("  ✓ dtbs/%s", dtbName)
+	}
+	return nil
+}
+
+// createSymlink removes existing file/link and creates a new symlink.
+func createSymlink(ctx *Context, source, target string) error {
+	// Remove existing file/link if it exists
+	if ctx.FS.Exists(target) {
+		if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove existing file: %w", err)
+		}
+	}
+
+	// Create symlink
+	if err := os.Symlink(source, target); err != nil {
+		return fmt.Errorf("failed to create symlink: %w", err)
+	}
+
+	return nil
 }
 
 // --- Helper functions to reduce RunE complexity ---

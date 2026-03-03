@@ -65,30 +65,25 @@ func (m *Manager) Install(ctx context.Context) error {
 }
 
 // getInstallEnv returns environment variables for installing ct-ng.
-// Includes brew binutils and bison paths for macOS.
+// On macOS, adds Homebrew binutils and bison to PATH.
+// On Linux, these tools are already on the standard PATH.
 func (m *Manager) getInstallEnv() []string {
 	env := os.Environ()
-
-	// Get brew prefix (typically /opt/homebrew on Apple Silicon)
-	brewPrefix := os.Getenv("HOMEBREW_PREFIX")
-	if brewPrefix == "" {
-		brewPrefix = "/opt/homebrew" // Default for Apple Silicon
+	if runtime.GOOS != "darwin" {
+		return env
 	}
 
-	// Add brew binutils and bison to PATH (required for objcopy, etc.)
+	brewPrefix := getBrewPrefix()
 	currentPath := os.Getenv("PATH")
 	newPath := fmt.Sprintf("%s/opt/binutils/bin:%s/opt/bison/bin:%s",
 		brewPrefix, brewPrefix, currentPath)
 
-	// Update PATH in environment
 	for i, e := range env {
 		if len(e) > 5 && e[:5] == "PATH=" {
 			env[i] = "PATH=" + newPath
 			return env
 		}
 	}
-
-	// PATH not found, add it
 	env = append(env, "PATH="+newPath)
 	return env
 }
@@ -222,13 +217,15 @@ func patchConfigContent(content string, paths ToolchainPaths) string {
 		content = replaceAll(content, home+"/src", paths.Src)
 	}
 
-	// On macOS: Disable building companion tools that fail with Clang/GCC mixing
-	// Use system versions from Homebrew instead
-	content = replaceAll(content, "CT_COMP_TOOLS_M4=y", "# CT_COMP_TOOLS_M4 is not set")
-	content = replaceAll(content, "CT_COMP_TOOLS_MAKE=y", "# CT_COMP_TOOLS_MAKE is not set")
-	content = replaceAll(content, "CT_COMP_TOOLS_AUTOCONF=y", "# CT_COMP_TOOLS_AUTOCONF is not set")
-	content = replaceAll(content, "CT_COMP_TOOLS_AUTOMAKE=y", "# CT_COMP_TOOLS_AUTOMAKE is not set")
-	content = replaceAll(content, "CT_COMP_TOOLS_LIBTOOL=y", "# CT_COMP_TOOLS_LIBTOOL is not set")
+	// On macOS only: disable companion tools that fail with Clang/GCC mixing.
+	// On Linux, ct-ng builds these natively without issues.
+	if runtime.GOOS == "darwin" {
+		content = replaceAll(content, "CT_COMP_TOOLS_M4=y", "# CT_COMP_TOOLS_M4 is not set")
+		content = replaceAll(content, "CT_COMP_TOOLS_MAKE=y", "# CT_COMP_TOOLS_MAKE is not set")
+		content = replaceAll(content, "CT_COMP_TOOLS_AUTOCONF=y", "# CT_COMP_TOOLS_AUTOCONF is not set")
+		content = replaceAll(content, "CT_COMP_TOOLS_AUTOMAKE=y", "# CT_COMP_TOOLS_AUTOMAKE is not set")
+		content = replaceAll(content, "CT_COMP_TOOLS_LIBTOOL=y", "# CT_COMP_TOOLS_LIBTOOL is not set")
+	}
 
 	return content
 }
@@ -292,6 +289,13 @@ func (m *Manager) getBuildEnv(paths ToolchainPaths) []string {
 		env = append(env, fmt.Sprintf("ELMOS_WORKSPACE=%s", m.cfg.Image.VolumeName))
 	}
 
+	// On Linux, make is GNU make by default, libraries are in standard paths,
+	// and GCC is already on PATH. No special env manipulation needed.
+	if runtime.GOOS != "darwin" {
+		return env
+	}
+
+	// macOS: adjust paths for Homebrew libraries and GNU tools.
 	brewPrefix := getBrewPrefix()
 	localBin := m.ensureLocalBin()
 	m.ensureGCCSymlinks(localBin, brewPrefix)
@@ -304,11 +308,12 @@ func (m *Manager) getBuildEnv(paths ToolchainPaths) []string {
 }
 
 // getBrewPrefix returns the Homebrew prefix.
+// TODO(platform): replace with platform.Current().Packages().GetBinPath("brew") in Phase 4.
 func getBrewPrefix() string {
 	if prefix := os.Getenv("HOMEBREW_PREFIX"); prefix != "" {
 		return prefix
 	}
-	return "/opt/homebrew"
+	return "/opt/homebrew" // TODO(platform): default only correct on Apple Silicon macOS
 }
 
 // ensureLocalBin creates and returns the ~/.local/bin directory.

@@ -1,0 +1,65 @@
+# ELMOS Workspace Configuration — Radxa ROCK 5B+
+# Reference: assets/schemas/workspace.schema.json
+
+machine: "rock5b_plus"
+
+image:
+  volume_name: "elmos-rock5b"
+  size: "80G"
+
+build:
+  arch: "arm64"
+  jobs: 8
+  llvm: true
+  cross_compile: "llvm-"
+  verbose: false
+
+qemu:
+  memory: "4G"
+  gdb_port: 1234
+  ssh_port: 2222
+  smp: 4
+
+bootloader:
+  type: "u-boot"
+  repo: "https://github.com/u-boot/u-boot.git"
+  version: "v2024.01"
+
+plugins:
+  plugins:
+    kernel-builder:
+      type: builtin
+      enabled: true
+    bsp-manager:
+      type: builtin
+      enabled: true
+      config:
+        registries:
+          - name: official
+            url: "https://github.com/elmos-sdk/bsp-registry"
+    bootloader-builder:
+      type: builtin
+      enabled: true
+    caching-backend:
+      type: builtin
+      enabled: true
+      config:
+        cache_dir: "~/.elmos/build-cache"
+    rootfs-builder:
+      type: builtin
+      enabled: true
+      config:
+        distribution: debian
+        release: bookworm
+        size_gb: 8
+    image-assembler:
+      type: builtin
+      enabled: true
+
+profiles:
+  debug:
+    arch: arm64
+    jobs: 4
+  release:
+    arch: arm64
+    jobs: 8

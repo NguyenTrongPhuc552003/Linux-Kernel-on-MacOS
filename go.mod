@@ -1,6 +1,6 @@
 module github.com/NguyenTrongPhuc552003/elmos
 
-go 1.23.0
+go 1.26.0
 
 require (
 	github.com/charmbracelet/bubbles v0.21.0
@@ -9,6 +9,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.19.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -47,5 +48,4 @@ require (
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -60,6 +60,7 @@ func buildMenuStructure() []MenuItem {
 			{Label: "Reset", Desc: "Reclone source", Action: "kernel:reset", Command: "elmos kernel reset", Args: []string{"kernel", "reset"}},
 			{Label: "Config", Desc: "Configure kernel", Action: "kernel:config", Command: "elmos kernel config <type>", NeedsInput: true, InputPrompt: "Config (defconfig/tinyconfig/menuconfig):", InputPlaceholder: "defconfig"},
 			{Label: "Build", Desc: "Compile kernel", Action: "kernel:build", Command: "elmos kernel build", Args: []string{"kernel", "build"}},
+			{Label: "Install", Desc: "Link build artifacts", Action: "kernel:install", Command: "elmos kernel install", Args: []string{"kernel", "install"}},
 			{Label: "Clean", Desc: "Remove artifacts", Action: "kernel:clean", Command: "elmos kernel clean", Args: []string{"kernel", "clean"}},
 		}},
 		{Label: "Modules", Desc: "Manage kernel modules", Children: []MenuItem{
@@ -81,16 +82,22 @@ func buildMenuStructure() []MenuItem {
 		{Label: "GDB", Desc: "Connect debugger", Action: "gdb:connect", Command: "elmos gdb", Args: []string{"gdb"}},
 		{Label: "RootFS", Desc: "Manage root filesystem", Children: []MenuItem{
 			{Label: "Status", Desc: "Show rootfs status", Action: "rootfs:status", Command: "elmos rootfs status", Args: []string{"rootfs", "status"}},
-			{Label: "Create", Desc: "Create rootfs", Action: "rootfs:create", Command: "elmos rootfs create -s <size>", NeedsInput: true, InputPrompt: "Size (e.g. 5G):", InputPlaceholder: "5G"},
+			{Label: "Build", Desc: "Build rootfs", Action: "rootfs:build", Command: "elmos rootfs build -s <size>", NeedsInput: true, InputPrompt: "Size (e.g. 5G):", InputPlaceholder: "5G"},
 			{Label: "Clean", Desc: "Remove rootfs", Action: "rootfs:clean", Command: "elmos rootfs clean", Args: []string{"rootfs", "clean"}},
+		}},
+		{Label: "Bootloader", Desc: "Build and install U-Boot", Children: []MenuItem{
+			{Label: "Build", Desc: "Build bootloader", Action: "bootloader:build", Command: "elmos bootloader build", Args: []string{"bootloader", "build"}},
+			{Label: "Install", Desc: "Link bootloader artifacts", Action: "bootloader:install", Command: "elmos bootloader install", Args: []string{"bootloader", "install"}},
+			{Label: "Blobs", Desc: "List/download firmware blobs", Action: "bootloader:blobs", Command: "elmos bootloader blobs", Args: []string{"bootloader", "blobs"}},
 		}},
 		{Label: "Doctor", Desc: "Check environment", Action: "doctor:check", Command: "elmos doctor", Args: []string{"doctor"}},
 		{Label: "Toolchains", Desc: "Manage cross-compiler toolchains", Children: []MenuItem{
 			{Label: "Status", Desc: "Show installed toolchains", Action: "toolchain:status", Command: "elmos toolchains status", Args: []string{"toolchains", "status"}},
-			{Label: "Install", Desc: "Install crosstool-ng", Action: "toolchain:install", Command: "elmos toolchains install", Args: []string{"toolchains", "install"}},
+			{Label: "Clone", Desc: "Install crosstool-ng", Action: "toolchain:clone", Command: "elmos toolchains clone", Args: []string{"toolchains", "clone"}},
 			{Label: "List", Desc: "List available targets", Action: "toolchain:list", Command: "elmos toolchains list", Args: []string{"toolchains", "list"}},
 			{Label: "Select", Desc: "Select toolchain target", Action: "toolchain:select", Command: "elmos toolchains <target>", NeedsInput: true, InputPrompt: "Target (e.g. riscv64-unknown-linux-gnu):", InputPlaceholder: "riscv64-unknown-linux-gnu"},
 			{Label: "Build", Desc: "Build selected toolchain", Action: "toolchain:build", Command: "elmos toolchains build", Args: []string{"toolchains", "build"}},
+			{Label: "Install", Desc: "Link selected toolchain", Action: "toolchain:install", Command: "elmos toolchains install", Args: []string{"toolchains", "install"}},
 			{Label: "Env", Desc: "Show env variables", Action: "toolchain:env", Command: "elmos toolchains env", Args: []string{"toolchains", "env"}},
 			{Label: "Menuconfig", Desc: "Configure toolchain", Action: "toolchain:menuconfig", Command: "elmos toolchains menuconfig", Interactive: true, Args: []string{"toolchains", "menuconfig"}},
 			{Label: "Clean", Desc: "Clean toolchain build", Action: "toolchain:clean", Command: "elmos toolchains clean", Args: []string{"toolchains", "clean"}},
@@ -103,8 +110,20 @@ type CommandRunner func(action string, output io.Writer) error
 
 // Run starts the TUI application.
 func Run() error {
+	// Ensure TERM is set for WSL2 and minimal environments where it may be absent.
+	// Without TERM, bubbletea cannot send the ANSI sequences needed for alt-screen.
+	// Best-effort: failure to set TERM is non-fatal — bubbletea may degrade gracefully.
+	if os.Getenv("TERM") == "" {
+		_ = os.Setenv("TERM", "xterm-256color")
+	}
+
 	m := NewModel()
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	// tea.WithAltScreen() switches to the alternate screen buffer (cleaner UX).
+	// tea.WithMouseCellMotion() enables cell-level mouse events for scrolling.
+	p := tea.NewProgram(m,
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+	)
 	_, err := p.Run()
 	return err
 }

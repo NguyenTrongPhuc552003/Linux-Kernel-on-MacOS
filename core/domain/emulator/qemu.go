@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -15,6 +17,40 @@ import (
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/executor"
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/filesystem"
 )
+
+// validMemoryPattern matches valid QEMU memory specifications (e.g., "2G", "512M", "4096M")
+var validMemoryPattern = regexp.MustCompile(`^\d+[MGT]$`)
+
+// validateQEMUConfig validates QEMU configuration values to prevent command injection.
+func (q *QEMURunner) validateQEMUConfig() error {
+	// Validate memory format
+	if !validMemoryPattern.MatchString(q.cfg.QEMU.Memory) {
+		return fmt.Errorf("invalid memory format: %s (expected: <number>[M|G|T], e.g., 2G)", q.cfg.QEMU.Memory)
+	}
+
+	// Validate ports are in valid range
+	if q.cfg.QEMU.GDBPort < 1 || q.cfg.QEMU.GDBPort > 65535 {
+		return fmt.Errorf("invalid GDB port: %d (must be 1-65535)", q.cfg.QEMU.GDBPort)
+	}
+	if q.cfg.QEMU.SSHPort < 1 || q.cfg.QEMU.SSHPort > 65535 {
+		return fmt.Errorf("invalid SSH port: %d (must be 1-65535)", q.cfg.QEMU.SSHPort)
+	}
+
+	// Validate SMP is positive
+	if q.cfg.QEMU.SMP < 1 {
+		return fmt.Errorf("invalid SMP value: %d (must be >= 1)", q.cfg.QEMU.SMP)
+	}
+
+	// Validate paths don't contain null bytes (command injection vector)
+	if strings.ContainsRune(q.cfg.Paths.DiskImage, '\x00') {
+		return fmt.Errorf("invalid disk image path: contains null byte")
+	}
+	if strings.ContainsRune(q.cfg.Paths.ModulesDir, '\x00') {
+		return fmt.Errorf("invalid modules directory path: contains null byte")
+	}
+
+	return nil
+}
 
 // QEMURunner orchestrates QEMU execution.
 type QEMURunner struct {
@@ -36,6 +72,11 @@ func NewQEMURunner(exec executor.Executor, fs filesystem.FileSystem, cfg *elconf
 
 // Run starts QEMU with the built kernel.
 func (q *QEMURunner) Run(ctx context.Context, opts RunOptions) error {
+	// Validate configuration first (SEC-3)
+	if err := q.validateQEMUConfig(); err != nil {
+		return fmt.Errorf("qemu config validation failed: %w", err)
+	}
+
 	archCfg := q.cfg.GetArchConfig()
 	if archCfg == nil {
 		return fmt.Errorf("unsupported architecture for QEMU: %s", q.cfg.Build.Arch)
@@ -54,7 +95,7 @@ func (q *QEMURunner) Run(ctx context.Context, opts RunOptions) error {
 
 	// Check disk image
 	if !q.fs.Exists(q.cfg.Paths.DiskImage) {
-		return fmt.Errorf("disk image not found: %s (run 'elmos rootfs create')", q.cfg.Paths.DiskImage)
+		return fmt.Errorf("disk image not found: %s (run 'elmos rootfs build')", q.cfg.Paths.DiskImage)
 	}
 
 	// Prepare modules sync script
@@ -149,7 +190,11 @@ func (q *QEMURunner) buildArgs(archCfg *elconfig.ArchConfig, kernelImage string,
 
 	// Display mode
 	if opts.Graphical {
-		args = append(args, "-display", "cocoa")
+		display := "gtk"
+		if runtime.GOOS == "darwin" {
+			display = "cocoa"
+		}
+		args = append(args, "-display", display)
 		args = append(args,
 			"-device", "virtio-gpu-pci",
 			"-device", "virtio-keyboard-pci",

@@ -5,13 +5,14 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	elconfig "github.com/NguyenTrongPhuc552003/elmos/core/config"
 	"github.com/NguyenTrongPhuc552003/elmos/core/domain/toolchain"
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/executor"
 	"github.com/NguyenTrongPhuc552003/elmos/core/infra/filesystem"
-	"github.com/NguyenTrongPhuc552003/elmos/core/infra/homebrew"
+	"github.com/NguyenTrongPhuc552003/elmos/core/infra/platform"
 )
 
 // CheckResult represents the result of a single check.
@@ -24,21 +25,21 @@ type CheckResult struct {
 
 // HealthChecker validates the development environment.
 type HealthChecker struct {
-	exec executor.Executor
-	fs   filesystem.FileSystem
-	cfg  *elconfig.Config
-	brew *homebrew.Resolver
-	tm   *toolchain.Manager
+	exec     executor.Executor
+	fs       filesystem.FileSystem
+	cfg      *elconfig.Config
+	platform platform.Platform
+	tm       *toolchain.Manager
 }
 
 // NewHealthChecker creates a new HealthChecker with the given dependencies.
 func NewHealthChecker(exec executor.Executor, fs filesystem.FileSystem, cfg *elconfig.Config, tm *toolchain.Manager) *HealthChecker {
 	return &HealthChecker{
-		exec: exec,
-		fs:   fs,
-		cfg:  cfg,
-		brew: homebrew.NewResolver(exec),
-		tm:   tm,
+		exec:     exec,
+		fs:       fs,
+		cfg:      cfg,
+		platform: platform.CurrentWithExecutor(exec),
+		tm:       tm,
 	}
 }
 
@@ -122,23 +123,44 @@ func (h *HealthChecker) CheckToolchains(ctx context.Context) []CheckResult {
 	return results
 }
 
-// CheckHomebrew checks if Homebrew is installed.
+// CheckHomebrew checks the package manager for the current platform.
+// On macOS it verifies Homebrew; on Linux it verifies apt-get/dnf/apk/pacman.
 func (h *HealthChecker) CheckHomebrew(ctx context.Context) CheckResult {
-	_, err := h.exec.LookPath("brew")
+	if runtime.GOOS == "darwin" {
+		_, err := h.exec.LookPath("brew")
+		return CheckResult{
+			Name:     "Homebrew",
+			Passed:   err == nil,
+			Required: true,
+			Message:  "Install from: https://brew.sh",
+		}
+	}
+	// Linux: check for distro package manager
+	mgr := h.detectLinuxPackageManager()
 	return CheckResult{
-		Name:     "Homebrew",
-		Passed:   err == nil,
+		Name:     "Package Manager (" + h.platform.Name() + ")",
+		Passed:   mgr != "",
 		Required: true,
-		Message:  "Install from: https://brew.sh",
+		Message:  "apt-get, dnf, apk, or pacman required",
 	}
 }
 
-// CheckPackages checks if required Homebrew packages are installed.
+// detectLinuxPackageManager returns the name of the first found package manager.
+func (h *HealthChecker) detectLinuxPackageManager() string {
+	for _, mgr := range []string{"apt-get", "dnf", "apk", "pacman"} {
+		if _, err := h.exec.LookPath(mgr); err == nil {
+			return mgr
+		}
+	}
+	return ""
+}
+
+// CheckPackages checks if required packages are installed.
 func (h *HealthChecker) CheckPackages(ctx context.Context) []CheckResult {
 	pkgSet, err := h.getInstalledPackageSet()
 	if err != nil {
 		return []CheckResult{{
-			Name:     "Homebrew Packages",
+			Name:     h.packageLabel(),
 			Passed:   false,
 			Required: true,
 			Message:  "Failed to list packages",
@@ -157,14 +179,25 @@ func (h *HealthChecker) CheckPackages(ctx context.Context) []CheckResult {
 }
 
 // getInstalledPackageSet returns a set of installed package names.
+// On Linux, native package names differ from canonical names (e.g. "libelf-dev"
+// vs "libelf"), so we also probe each RequiredPackage by canonical name via
+// platform.Packages().IsInstalled() to bridge the naming gap.
 func (h *HealthChecker) getInstalledPackageSet() (map[string]bool, error) {
-	installed, err := h.brew.ListInstalled()
+	installed, err := h.platform.Packages().ListInstalled()
 	if err != nil {
 		return nil, err
 	}
 	pkgSet := make(map[string]bool)
 	for _, p := range installed {
 		pkgSet[p] = true
+	}
+	// Also check each RequiredPackage by canonical name via platform IsInstalled.
+	// This resolves canonical → native name internally and covers cases where
+	// ListInstalled returns native names but RequiredPackages uses canonical ones.
+	for _, pkg := range elconfig.RequiredPackages {
+		if h.platform.Packages().IsInstalled(pkg.Name) {
+			pkgSet[pkg.Name] = true
+		}
 	}
 	return pkgSet, nil
 }
@@ -188,13 +221,14 @@ func (h *HealthChecker) checkCategoryPackages(catName string, pkgs []elconfig.Re
 		return nil
 	}
 
+	label := h.packageLabel()
 	var results []CheckResult
 	var missing []string
 
 	for _, pkg := range pkgs {
 		passed := pkgSet[pkg.Name]
 		results = append(results, CheckResult{
-			Name:     fmt.Sprintf("Homebrew Packages: [%s] %s", catName, pkg.Name),
+			Name:     fmt.Sprintf("%s: [%s] %s", label, catName, pkg.Name),
 			Passed:   passed,
 			Required: pkg.Required,
 			Message:  pkg.Description,
@@ -209,15 +243,74 @@ func (h *HealthChecker) checkCategoryPackages(catName string, pkgs []elconfig.Re
 			Name:     "  Fix missing packages",
 			Passed:   false,
 			Required: false,
-			Message:  fmt.Sprintf("brew install %s", strings.Join(missing, " ")),
+			Message:  h.installHint(missing),
 		})
 	}
 
 	return results
 }
 
+// packageLabel returns the section label for package check results.
+func (h *HealthChecker) packageLabel() string {
+	if runtime.GOOS == "darwin" {
+		return "Homebrew Packages"
+	}
+	return "System Packages"
+}
+
+// installHint returns a platform-appropriate install command for the missing packages.
+func (h *HealthChecker) installHint(missing []string) string {
+	names := strings.Join(missing, " ")
+	if runtime.GOOS == "darwin" {
+		return "brew install " + names
+	}
+	platName := h.platform.Name()
+	switch {
+	case strings.Contains(platName, "debian"):
+		return "sudo apt-get install " + names
+	case strings.Contains(platName, "fedora"):
+		return "sudo dnf install " + names
+	case strings.Contains(platName, "alpine"):
+		return "sudo apk add " + names
+	case strings.Contains(platName, "arch"):
+		return "sudo pacman -S " + names
+	default:
+		return "Install: " + names
+	}
+}
+
 // CheckHeaders checks if required header files exist.
+// On Linux, headers are at /usr/include (provided by libc-dev).
+// On macOS, headers are in the project's assets/libraries/ directory.
 func (h *HealthChecker) CheckHeaders(ctx context.Context) []CheckResult {
+	if runtime.GOOS != "darwin" {
+		return h.checkSystemHeaders()
+	}
+	return h.checkCustomHeaders()
+}
+
+// checkSystemHeaders checks for headers at /usr/include (Linux).
+func (h *HealthChecker) checkSystemHeaders() []CheckResult {
+	var results []CheckResult
+	sysInclude := "/usr/include"
+	for _, header := range elconfig.RequiredHeaders {
+		passed := h.fs.Exists(filepath.Join(sysInclude, header))
+		msg := ""
+		if !passed {
+			msg = "Install libc development headers (e.g., sudo apt-get install libc6-dev)"
+		}
+		results = append(results, CheckResult{
+			Name:     fmt.Sprintf("System Headers: %s", header),
+			Passed:   passed,
+			Required: true,
+			Message:  msg,
+		})
+	}
+	return results
+}
+
+// checkCustomHeaders checks for headers in the project's assets/libraries/ (macOS).
+func (h *HealthChecker) checkCustomHeaders() []CheckResult {
 	var results []CheckResult
 
 	headersDir := h.cfg.Paths.LibrariesDir

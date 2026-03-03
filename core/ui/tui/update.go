@@ -277,16 +277,16 @@ func (m Model) handleInputMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // commandFormatters maps action identifiers to command format strings.
 var commandFormatters = map[string]string{
-	"module:new":           "elmos module new %s",
-	"module:build:one":     "elmos module build %s",
-	"app:new":              "elmos app new %s",
-	"app:build:one":        "elmos app build %s",
-	"config:arch":          "elmos config set arch %s",
-	"config:jobs":          "elmos config set jobs %s",
-	"config:memory":        "elmos config set memory %s",
-	"rootfs:create:custom": "elmos rootfs create -s %s",
-	"toolchain:select":     "elmos toolchains %s",
-	"kernel:switch":        "elmos kernel switch %s",
+	"module:new":       "elmos module new %s",
+	"module:build:one": "elmos module build %s",
+	"app:new":          "elmos app new %s",
+	"app:build:one":    "elmos app build %s",
+	"config:arch":      "elmos config set arch %s",
+	"config:jobs":      "elmos config set jobs %s",
+	"config:memory":    "elmos config set memory %s",
+	"rootfs:build":     "elmos rootfs build -s %s",
+	"toolchain:select": "elmos toolchains %s",
+	"kernel:switch":    "elmos kernel switch %s",
 }
 
 // getCommandWithInput returns the display command string for a given action and input.
@@ -338,12 +338,12 @@ var actionArgsDispatch = map[string]func(string) []string{
 		}
 		return []string{"app", "build", v}
 	},
-	"app:new":              func(v string) []string { return []string{"app", "new", v} },
-	"rootfs:create:custom": func(v string) []string { return []string{"rootfs", "create", "-s", v} },
-	"config:arch":          func(v string) []string { return []string{"config", "set", "arch", v} },
-	"config:jobs":          func(v string) []string { return []string{"config", "set", "jobs", v} },
-	"config:memory":        func(v string) []string { return []string{"config", "set", "memory", v} },
-	"toolchain:select":     func(v string) []string { return []string{"toolchains", v} },
+	"app:new":          func(v string) []string { return []string{"app", "new", v} },
+	"rootfs:build":     func(v string) []string { return []string{"rootfs", "build", "-s", v} },
+	"config:arch":      func(v string) []string { return []string{"config", "set", "arch", v} },
+	"config:jobs":      func(v string) []string { return []string{"config", "set", "jobs", v} },
+	"config:memory":    func(v string) []string { return []string{"config", "set", "memory", v} },
+	"toolchain:select": func(v string) []string { return []string{"toolchains", v} },
 }
 
 // actionToArgs converts an action identifier to CLI arguments using map dispatch.
