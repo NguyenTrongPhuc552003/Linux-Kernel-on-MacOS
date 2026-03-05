@@ -21,12 +21,12 @@ Subcommands allow you to clone crosstool-ng, list available targets,
 select a target configuration, build toolchains, and more.
 
 Examples:
-  elmos toolchains clone                # Clone and install crosstool-ng
-  elmos toolchains list                 # List target samples for active arch
+  elmos toolchains clone                	  # Clone and install crosstool-ng
+  elmos toolchains list                 	  # List target samples for active arch
   elmos toolchains riscv64-unknown-linux-gnu  # Select target
-  elmos toolchains build                # Build the selected toolchain
-  elmos toolchains build -j8            # Build with 8 parallel jobs
-  elmos toolchains install              # Symlink built toolchain to workspace`,
+  elmos toolchains build                	  # Build the selected toolchain
+  elmos toolchains build -j8            	  # Build with 8 parallel jobs
+  elmos toolchains install              	  # Symlink built toolchain to workspace`,
 	}
 
 	toolchainsCmd.AddCommand(
