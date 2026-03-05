@@ -1,0 +1,184 @@
+@startuml architecture
+!theme plain
+skinparam linetype ortho
+skinparam componentStyle rectangle
+
+title ELMOS Layered Architecture — Senior Embedded Linux SDK Design
+
+package "User Interface Layer" {
+    component [CLI\nAdapter] as CLI
+    component [TUI\nFramework] as TUI
+    component [Printer\n& Formatters] as Printer
+}
+
+package "Application Layer" {
+    component [Command\nRegistry] as CmdReg
+    component [App\nContainer] as AppContainer
+    component [Error\nHandling] as ErrorHandler
+}
+
+package "Configuration Layer" {
+    component [Config\nLoader] as ConfigLoader
+    component [Machine\nDefinitions] as MachineConfig
+    component [Workspace\nManager] as WorkspaceManager
+    component [Defaults &\nValidation] as Defaults
+}
+
+package "Context Layer" {
+    component [Build\nContext] as Context
+    component [Build\nState] as BuildState
+}
+
+package "Domain Layer — Business Logic" {
+    package "Builder Subdomain" {
+        component [Kernel\nBuilder] as KernelBuilder
+        component [Module\nBuilder] as ModuleBuilder
+        component [App\nBuilder] as AppBuilder
+    }
+    
+    package "Orchestration Subdomain" {
+        component [DAG\nPipeline] as Pipeline
+        component [Fingerprint\nEngine] as Fingerprint
+    }
+    
+    package "BSP Subdomain" {
+        component [Registry\nClient] as Registry
+        component [Firmware\nManager] as FirmwareManager
+    }
+    
+    package "System Subdomain" {
+        component [Rootfs\nBuilder] as RootfsBuilder
+        component [Patcher] as Patcher
+        component [Doctor\nChecker] as Doctor
+        component [QEMU\nIntegration] as QEMU
+    }
+    
+    package "Plugin Subsystem" {
+        component [Plugin\nLoader] as PluginLoader
+        component [Hook\nExecutor] as HookExecutor
+        component [Builtin\nPlugins] as BuiltinPlugins
+    }
+    
+    package "Toolchain Subdomain" {
+        component [Toolchain\nManager] as ToolchainManager
+    }
+}
+
+package "Infrastructure Layer — I/O Adapters" {
+    package "Execution Abstraction" {
+        component [Shell\nExecutor] as ShellExec
+        component [Mock\nExecutor] as MockExec
+        component [Environment\nResolver] as EnvResolver
+    }
+    
+    package "Filesystem Abstraction" {
+        component [OS\nFilesystem] as OSFilesystem
+        component [File\nValidator] as FileValidator
+    }
+    
+    package "Platform Abstraction" {
+        component [Platform\nDetector] as PlatformDetector
+        component [Linux\nImpl] as LinuxImpl
+        component [macOS\nImpl] as DarwinImpl
+        component [Windows\nImpl] as WindowsImpl
+    }
+    
+    package "Package Management" {
+        component [Homebrew\nResolver] as HomebrewResolver
+    }
+}
+
+package "Cross-Cutting Concerns" {
+    component [Result\nType System] as ResultType
+    component [Logging &\nMetrics] as Logging
+    component [Version\nManagement] as Version
+}
+
+' UI Layer connections
+CLI --> CmdReg : dispatches
+TUI --> CLI : uses
+Printer --> CmdReg : formats output
+
+' App Layer connections
+CmdReg --> AppContainer : invokes commands
+AppContainer --> ConfigLoader : loads config
+AppContainer --> Context : injects context
+
+' Config Layer
+ConfigLoader --> MachineConfig : reads definitions
+ConfigLoader --> WorkspaceManager : manages workspaces
+ConfigLoader --> Defaults : applies defaults
+
+' Context to Domain
+Context --> KernelBuilder : passed to builders
+Context --> Pipeline : passed to orchestration
+Context --> ToolchainManager : passed to toolchain
+
+' Domain interconnections
+KernelBuilder --> ToolchainManager : uses toolchain
+ModuleBuilder --> ToolchainManager : uses toolchain
+AppBuilder --> ToolchainManager : uses toolchain
+Pipeline --> KernelBuilder : orchestrates
+Pipeline --> ModuleBuilder : orchestrates
+Pipeline --> AppBuilder : orchestrates
+Pipeline --> RootfsBuilder : orchestrates
+Pipeline --> Fingerprint : fingerprints artifacts
+
+Registry --> FirmwareManager : manages firmware
+RootfsBuilder --> Patcher : applies patches
+Doctor --> ToolchainManager : validates toolchain
+QEMU --> RootfsBuilder : boots rootfs
+PluginLoader --> BuiltinPlugins : discovers plugins
+HookExecutor --> PluginLoader : executes hooks
+
+' Domain to Infrastructure
+KernelBuilder --> ShellExec : executes commands
+ModuleBuilder --> ShellExec : executes commands
+AppBuilder --> ShellExec : executes commands
+RootfsBuilder --> OSFilesystem : creates files
+Patcher --> OSFilesystem : applies patches
+QEMU --> ShellExec : launches emulator
+ToolchainManager --> PlatformDetector : detects platform
+ToolchainManager --> HomebrewResolver : resolves packages (macOS)
+ToolchainManager --> LinuxImpl : Linux-specific
+ToolchainManager --> DarwinImpl : Darwin-specific
+ToolchainManager --> WindowsImpl : Windows-specific
+
+' Infrastructure to Infrastructure
+ShellExec --> EnvResolver : resolves environment
+OSFilesystem --> FileValidator : validates files
+PlatformDetector --> LinuxImpl : detects
+PlatformDetector --> DarwinImpl : detects
+PlatformDetector --> WindowsImpl : detects
+
+' Cross-cutting
+KernelBuilder -.-> ResultType : returns results
+ModuleBuilder -.-> ResultType : returns results
+AppBuilder -.-> ResultType : returns results
+ShellExec -.-> Logging : logs operations
+OSFilesystem -.-> Logging : logs operations
+AppContainer -.-> Version : tracks version
+
+note right of Context
+  Immutable build context
+  passed through all layers
+  via pointer injection
+end note
+
+note right of Pipeline
+  DAG-based task
+  orchestration with
+  fingerprinting
+end note
+
+note right of HookExecutor
+  Plugin lifecycle
+  hooks at key
+  build stages
+end note
+
+note right of ResultType
+  No exceptions;
+  all errors via
+  std::expected<T, Error>
+end note

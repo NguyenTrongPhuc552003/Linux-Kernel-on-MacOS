@@ -1,0 +1,113 @@
+@startuml dataflow
+!theme plain
+
+title ELMOS Data Flow — Build Pipeline Architecture
+
+' Storage and Input
+database "Workspace\nConfig\n(elmos.yaml)" as WorkspaceConfig
+database "Machine\nDefs\n(machines/)" as MachineDefs
+database "Kernel\nSources" as KernelSrc
+database "Toolchain\nCache" as ToolchainCache
+
+' Processing stages
+process "Config\nLoader" as ConfigLoad
+process "Context\nBuilder" as ContextBuild
+process "Fingerprint\nCalculator" as Fingerprint
+process "DAG\nPlanner" as DAGPlanner
+process "Kernel\nBuilder" as KernelBuild
+process "Module\nBuilder" as ModuleBuild
+process "Rootfs\nBuilder" as RootfsBuild
+process "BSP\nIntegrator" as BSPIntegrate
+process "Image\nAssembler" as ImageAssemble
+process "QEMU\nBooter" as QEMUBoot
+
+' Intermediate outputs
+datastore "Build\nCache\n(.fingerprints)" as BuildCache
+datastore "Build\nArtifacts" as BuildArtifacts
+datastore "Plugin\nState" as PluginState
+
+' Final outputs
+database "Kernel\nImage\n(zImage)" as KernelImg
+database "Kernel\nModules\n(.ko)" as KernelMods
+database "Root\nFilesystem\n(initramfs)" as RootfsImg
+database "Boot\nImage\n(combined)" as BootImg
+database "QEMU\nDisk\nImage" as QEMUImg
+
+' Input flows
+WorkspaceConfig --> ConfigLoad : yml config
+MachineDefs --> ConfigLoad : architecture defs
+ConfigLoad --> ContextBuild : parsed config
+
+KernelSrc --> Fingerprint : source hashes
+ToolchainCache --> Fingerprint : toolchain version
+ContextBuild --> Fingerprint : build parameters
+Fingerprint --> BuildCache : current fingerprints
+BuildCache --> DAGPlanner : cache hits/misses
+
+ContextBuild --> DAGPlanner : context
+DAGPlanner --> KernelBuild : tasks
+DAGPlanner --> ModuleBuild : tasks
+DAGPlanner --> RootfsBuild : tasks
+DAGPlanner --> BSPIntegrate : tasks
+
+' Build stage flows
+KernelSrc --> KernelBuild : sources
+ToolchainCache --> KernelBuild : cross-compiler
+KernelBuild --> BuildArtifacts : logs
+KernelBuild --> KernelImg : compiled image
+KernelBuild --> Fingerprint : build artifacts
+
+KernelImg --> ModuleBuild : module target
+KernelSrc --> ModuleBuild : module sources
+ModuleBuild --> BuildArtifacts : logs
+ModuleBuild --> KernelMods : compiled modules
+ModuleBuild --> Fingerprint : module hashes
+
+MachineDefs --> RootfsBuild : rootfs packages
+KernelMods --> RootfsBuild : modules to install
+ToolchainCache --> RootfsBuild : sysroot
+RootfsBuild --> BuildArtifacts : logs
+RootfsBuild --> RootfsImg : filesystem image
+RootfsBuild --> Fingerprint : rootfs hash
+
+KernelImg --> BSPIntegrate : kernel
+RootfsImg --> BSPIntegrate : rootfs
+MachineDefs --> BSPIntegrate : board config
+BSPIntegrate --> BootImg : bootable image
+BSPIntegrate --> Fingerprint : final hash
+
+KernelImg --> ImageAssemble : kernel
+BootImg --> ImageAssemble : boot image
+RootfsImg --> ImageAssemble : rootfs
+ImageAssemble --> QEMUImg : disk image
+ImageAssemble --> BuildArtifacts : metadata
+
+QEMUImg --> QEMUBoot : disk image
+BootImg --> QEMUBoot : boot image
+ContextBuild --> QEMUBoot : qemu config
+QEMUBoot --> BuildArtifacts : serial output
+QEMUBoot --> PluginState : boot results
+
+BuildCache --> PluginState : cache state
+BuildArtifacts --> PluginState : build artifacts
+
+note right of Fingerprint
+  Cryptographic hashes ensure
+  incremental builds are correct
+end note
+
+note right of DAGPlanner
+  Directed Acyclic Graph ensures
+  correct build order and
+  enables parallel execution
+end note
+
+note bottom of QEMUBoot
+  Emulation validates bootability
+  before hardware deployment
+end note
+
+note bottom of PluginState
+  Plugins hook into pipeline
+  for custom functionality
+end note

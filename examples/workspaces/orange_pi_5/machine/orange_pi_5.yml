@@ -1,0 +1,63 @@
+# Machine Definition: Orange Pi 5
+# Reference: assets/schemas/machine.schema.json
+
+machine:
+  name: "orange_pi_5"
+  manufacturer: "Xunlong"
+  description: "Orange Pi 5 single-board computer with Rockchip RK3588S"
+
+  tags:
+    - arm64
+    - armv8
+    - rockchip
+    - rk3588s
+    - orange-pi
+    - production-ready
+
+  kernel:
+    arch: "arm64"
+    defconfig: "rockchip_linux_defconfig"
+    device_trees:
+      - "rk3588s-orangepi-5.dtb"
+
+  bootloader:
+    type: "u-boot"
+    repo: "https://github.com/u-boot/u-boot.git"
+    version: "v2024.04"
+    defconfig: "orangepi-5-rk3588s_defconfig"
+    binary: "u-boot-rockchip.bin"
+    firmware:
+      - name: "DDR Initialization"
+        src: "https://github.com/rockchip-linux/rkbin/raw/master/bin/rk35/rk3588s_ddr_1056MHz_v1.12.bin"
+        blob_name: "rk3588s_ddr.bin"
+        checksum: ""
+        required: true
+      - name: "BL31 ATF"
+        src: "https://github.com/rockchip-linux/rkbin/raw/master/bin/rk35/rk3588_bl31_v1.40.elf"
+        blob_name: "bl31.elf"
+        checksum: ""
+        required: true
+    flash:
+      method: "rkdevtool"
+      offset_mb: 0
+      device_pattern: "/dev/sd*"
+
+  qemu:
+    system: "qemu-system-aarch64"
+    machine: "virt"
+    cpu: "cortex-a72"
+    memory: "2G"
+    network: "user"
+    console: "ttyAMA0"
+    smp: 4
+
+  rootfs:
+    extra_packages:
+      - "u-boot-tools"
+      - "openssh-server"
+      - "python3"
+      - "wireless-tools"
+      - "wpasupplicant"
+    kernel_modules:
+      - "rk_crypto"
+      - "8189es"

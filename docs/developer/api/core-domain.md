@@ -1,111 +1,225 @@
 # Core Domain API
 
-Business logic modules in the domain layer.
+Business logic classes in the domain layer. All accept raw pointers via constructor injection.
+
+---
 
 ## Builder Package
 
 ### KernelBuilder
 
-```go
-type KernelBuilder struct {
-    // Fields for kernel operations
-}
+`src/domain/builder/kernel.hpp`
 
-func NewKernelBuilder(...) *KernelBuilder
-func (kb *KernelBuilder) Clone() error
-func (kb *KernelBuilder) Configure(configType string) error
-func (kb *KernelBuilder) Build() error
-func (kb *KernelBuilder) Clean() error
+```cpp
+struct BuildOptions {
+    int jobs = 0;
+    std::vector<std::string> targets;
+};
+
+class KernelBuilder {
+public:
+    KernelBuilder(context::Context* ctx, toolchain::Manager* tm);
+
+    auto build(std::stop_token token, BuildOptions opts) -> VoidResult;
+    auto configure(std::stop_token token, const std::string& config_type) -> VoidResult;
+    auto clean(std::stop_token token) -> VoidResult;
+    auto enable_kvm_config(std::stop_token token) -> VoidResult;
+    auto get_default_targets() -> std::vector<std::string>;
+    auto has_config() -> bool;
+    auto has_kernel_image() -> bool;
+};
 ```
 
-Handles kernel cloning, config, building.
+### ModuleBuilder
 
-### ModuleBuilder / AppBuilder
+`src/domain/builder/module.hpp`
 
-Similar structure for modules and apps.
+```cpp
+struct ModuleInfo {
+    std::string name, path, description;
+    bool built = false;
+};
 
-- `Create(name string)` - Generate templates
-- `Build(dir string)` - Cross-compile
+class ModuleBuilder {
+public:
+    ModuleBuilder(context::Context* ctx, toolchain::Manager* tm);
+
+    auto build(std::stop_token token, const std::string& name = "") -> VoidResult;
+    auto clean(std::stop_token token, const std::string& name = "") -> VoidResult;
+    auto get_modules(const std::string& name = "") -> Result<std::vector<ModuleInfo>>;
+    auto prepare_headers(std::stop_token token) -> VoidResult;
+    auto create_module(const std::string& name) -> VoidResult;
+};
+```
+
+### AppBuilder
+
+`src/domain/builder/app.hpp`
+
+```cpp
+struct AppInfo {
+    std::string name, path;
+    bool built = false;
+};
+
+class AppBuilder {
+public:
+    AppBuilder(context::Context* ctx, toolchain::Manager* tm);
+
+    auto build(std::stop_token token, const std::string& name = "") -> VoidResult;
+    auto clean(std::stop_token token, const std::string& name = "") -> VoidResult;
+    auto get_apps(const std::string& name = "") -> Result<std::vector<AppInfo>>;
+    auto create_app(const std::string& name) -> VoidResult;
+};
+```
+
+---
 
 ## Doctor Package
 
 ### HealthChecker
 
-```go
-type HealthChecker struct{}
+`src/domain/doctor/checker.hpp`
 
-func NewHealthChecker(...) *HealthChecker
-func (hc *HealthChecker) Check() ([]CheckResult, error)
+```cpp
+struct CheckResult {
+    std::string name;
+    bool passed = false;
+    bool required = true;
+    std::string message;
+};
+
+class HealthChecker {
+public:
+    HealthChecker(infra::executor::Executor* exec,
+                  infra::filesystem::FileSystem* fs,
+                  config::Config* cfg,
+                  infra::platform::Platform* platform,
+                  toolchain::Manager* tm);
+
+    auto check_all(std::stop_token token) -> std::pair<std::vector<CheckResult>, int>;
+    auto check_packages(std::stop_token token) -> std::vector<CheckResult>;
+    auto check_headers() -> std::vector<CheckResult>;
+    auto check_cross_gdb(std::stop_token token) -> std::vector<CheckResult>;
+    auto check_toolchains() -> std::vector<CheckResult>;
+};
 ```
 
-Runs dependency checks.
-
-### AutoFixer
-
-```go
-type AutoFixer struct{}
-
-func NewAutoFixer(...) *AutoFixer
-func (af *AutoFixer) Fix(results []CheckResult) error
-```
-
-Applies automatic fixes.
+---
 
 ## Emulator Package
 
 ### QEMURunner
 
-```go
-type QEMURunner struct{}
+`src/domain/emulator/qemu.hpp`
 
-func NewQEMURunner(...) *QEMURunner
-func (qr *QEMURunner) Run(options []string) error
-func (qr *QEMURunner) Debug(options []string) error
+```cpp
+struct RunOptions {
+    bool gdb = false;
+    bool graphic = false;
+    std::string initrd, append;
+    std::vector<std::string> extra_args;
+};
+
+class QEMURunner {
+public:
+    explicit QEMURunner(context::Context* ctx);
+
+    auto run(std::stop_token token, RunOptions opts) -> VoidResult;
+    auto build_command(const RunOptions& opts) -> Result<std::pair<std::string, std::vector<std::string>>>;
+    auto is_available(std::stop_token token) -> bool;
+};
 ```
 
-Manages QEMU execution.
+---
 
 ## Patch Package
 
-### Manager
+### Patcher
 
-```go
-type Manager struct{}
+`src/domain/patch/patcher.hpp`
 
-func NewManager(...) *Manager
-func (pm *Manager) Apply(patchPath string) error
-func (pm *Manager) List() ([]Patch, error)
+```cpp
+struct PatchInfo {
+    std::string name, path;
+    bool applied = false;
+};
+
+class Patcher {
+public:
+    Patcher(infra::executor::Executor* exec, infra::filesystem::FileSystem* fs);
+
+    auto apply(std::stop_token token, const std::string& target_dir,
+               const std::string& patch_dir) -> VoidResult;
+    auto apply_single(std::stop_token token, const std::string& target_dir,
+                      const std::string& patch_file) -> VoidResult;
+    auto list_patches(const std::string& patch_dir) -> Result<std::vector<PatchInfo>>;
+    auto check_applied(std::stop_token token, const std::string& target_dir,
+                       const std::string& patch_file) -> bool;
+};
 ```
 
-Applies kernel patches.
+---
 
 ## Rootfs Package
 
-### Creator
+### Builder
 
-```go
-type Creator struct{}
+`src/domain/rootfs/builder.hpp`
 
-func NewCreator(...) *Creator
-func (rc *Creator) Create() error
+```cpp
+struct RootfsOptions {
+    std::string distribution = "debian";
+    std::string release = "bookworm";
+    std::vector<std::string> packages;
+    std::string post_build_script;
+};
+
+class Builder {
+public:
+    explicit Builder(context::Context* ctx);
+
+    auto create(std::stop_token token, RootfsOptions opts) -> VoidResult;
+    auto install_modules(std::stop_token token) -> VoidResult;
+    auto customize(std::stop_token token, const std::string& script) -> VoidResult;
+    auto clean() -> VoidResult;
+};
 ```
 
-Creates Debian rootfs via debootstrap.
+---
 
 ## Toolchain Package
 
 ### Manager
 
-```go
-type Manager struct{}
+`src/domain/toolchain/manager.hpp`
 
-func NewManager(...) *Manager
-func (tm *Manager) Install() error
-func (tm *Manager) Build(target string) error
-func (tm *Manager) List() ([]string, error)
-func (tm *Manager) Status() (map[string]bool, error)
+```cpp
+struct ToolchainInfo {
+    std::string target, config_file;
+    bool installed = false;
+};
+
+struct ToolchainPaths {
+    std::string base_dir, x_tools, config_dir, build_dir, ct_ng_dir;
+};
+
+class Manager {
+public:
+    Manager(infra::executor::Executor* exec,
+            infra::filesystem::FileSystem* fs,
+            config::Config* cfg);
+
+    auto paths() const -> const ToolchainPaths&;
+    auto is_installed() const -> bool;
+    auto install(std::stop_token token) -> VoidResult;
+    auto build_toolchain(std::stop_token token, const std::string& target) -> VoidResult;
+    auto get_installed_toolchains() -> Result<std::vector<ToolchainInfo>>;
+    auto get_available_configs() -> Result<std::vector<std::string>>;
+    auto get_bin_dir(const std::string& target) -> std::string;
+};
 ```
 
-Manages crosstool-ng toolchains.
+---
 
-All domain structs use dependency injection with infra interfaces for testability.
+All domain classes use pointer-based constructor injection. No class owns its dependencies — the `App` class holds all `std::unique_ptr`s.

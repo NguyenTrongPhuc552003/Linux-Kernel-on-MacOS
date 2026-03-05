@@ -7,15 +7,12 @@ Run and debug kernels using ELMOS's QEMU integration.
 ## CLI Reference
 
 ```bash
-elmos qemu [flags]
+elmos qemu [subcommand]
 
-Flags:
-  -r, --run         Run mode (boot kernel)
-  -d, --debug       Debug mode (tmux + GDB)
-  -t, --target      Path to app or module (repeatable)
-  -l, --list        List available machines
-  -p, --pick        Select specific machine
-      --graphical   Use graphical display
+Subcommands:
+  run         Run mode (boot kernel)
+  debug       Debug mode (GDB attached)
+  list        List available machines
 ```
 
 ---
@@ -25,7 +22,7 @@ Flags:
 ### Basic Run
 
 ```bash
-elmos qemu -r
+elmos qemu run
 ```
 
 Boots kernel with generated rootfs. Output:
@@ -33,7 +30,7 @@ Boots kernel with generated rootfs. Output:
 ```
 → Starting QEMU...
 [    0.000000] Booting Linux on physical CPU 0x0000000000
-[    0.000000] Linux version 6.0.0-dirty ...
+[    0.000000] Linux version 6.18.0 ...
 ...
 System ready.
 #
@@ -42,33 +39,25 @@ System ready.
 ### Debug Mode
 
 ```bash
-elmos qemu -d
+elmos qemu debug
 ```
 
-Opens tmux session with:
-
-- **Left pane**: QEMU (paused at boot)
-- **Right pane**: GDB connected to kernel
+Launches QEMU with GDB stub enabled:
 
 ```bash
-# In GDB pane
+# In another terminal
+gdb-multiarch vmlinux -ex "target remote :1234"
 (gdb) break start_kernel
 (gdb) continue
 ```
 
-### With Targets
-
-Load userspace apps or kernel modules:
+### With Graphical Display
 
 ```bash
-# Run with user application
-elmos qemu -r -t ./examples/apps/hello/hello
-
-# Debug with kernel module
-elmos qemu -d -t ./examples/modules/hello/hello.ko
+elmos qemu run --graphical
 ```
 
-Targets are synced to `/mnt/share` inside the guest.
+Opens QEMU with GUI window (requires virtio-gpu kernel config).
 
 ---
 
@@ -77,40 +66,31 @@ Targets are synced to `/mnt/share` inside the guest.
 ### List Machines
 
 ```bash
-elmos qemu -l
+elmos qemu list
 ```
 
 Shows available QEMU machines for current architecture:
 
 ```
 ℹ Available QEMU Machines for arm64:
-  * virt - QEMU 10.2 ARM Virtual Machine (default)
+  * virt - QEMU ARM Virtual Machine (default)
     raspi3b - Raspberry Pi 3B
     raspi4b - Raspberry Pi 4B
-    sbsa-ref - QEMU SBSA Reference
 ```
-
-### Pick Machine
-
-```bash
-elmos qemu -p raspi4b -r
-```
-
-Uses Raspberry Pi 4B machine instead of default `virt`.
 
 ---
 
 ## RunOptions (Developer Reference)
 
-```go
-// core/domain/emulator/options.go
-type RunOptions struct {
-    Debug     bool     // Enable GDB stub
-    Run       bool     // Run mode
-    Graphical bool     // GUI display
-    Targets   []Target // Apps/modules to load
-    Machine   string   // Override machine
-}
+```cpp
+// src/domain/emulator/qemu.hpp
+struct RunOptions {
+    bool gdb = false;                        // Enable GDB stub
+    bool graphic = false;                    // GUI display
+    std::string initrd;                      // Custom initrd
+    std::string append;                      // Kernel cmdline
+    std::vector<std::string> extra_args;     // Extra QEMU args
+};
 ```
 
 ---
@@ -122,16 +102,6 @@ type RunOptions struct {
 | arm64 | `qemu-system-aarch64` | `virt`             | `ttyAMA0` |
 | arm   | `qemu-system-arm`     | `virt,highmem=off` | `ttyAMA0` |
 | riscv | `qemu-system-riscv64` | `virt`             | `ttyS0`   |
-
----
-
-## Graphical Mode
-
-```bash
-elmos qemu -r --graphical
-```
-
-Opens QEMU with GUI window (requires virtio-gpu kernel config).
 
 ---
 
@@ -152,10 +122,10 @@ ssh -p 2222 root@localhost
 
 ## Troubleshooting
 
-| Issue              | Solution                                  |
-| ------------------ | ----------------------------------------- |
-| "Kernel not found" | Run `elmos kernel build` first            |
-| "No rootfs"        | Run `elmos rootfs create`                 |
-| Boot hangs         | Check kernel config for `CONFIG_SERIAL_*` |
-| Invalid machine    | Run `elmos qemu -l` to see valid options  |
-| GDB fails          | Install `gdb` via Homebrew                |
+| Issue              | Solution                                   |
+| ------------------ | ------------------------------------------ |
+| "Kernel not found" | Run `elmos kernel build` first             |
+| "No rootfs"        | Run `elmos rootfs build`                   |
+| Boot hangs         | Check kernel config for `CONFIG_SERIAL_*`  |
+| Invalid machine    | Run `elmos qemu list` to see valid options |
+| GDB fails          | Install `gdb-multiarch`                    |

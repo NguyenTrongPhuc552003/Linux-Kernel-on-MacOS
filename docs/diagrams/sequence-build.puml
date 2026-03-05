@@ -1,0 +1,133 @@
+@startuml sequence-complete
+!theme plain
+
+title ELMOS User Command Execution Sequence — Complete Flow
+
+actor Developer as Dev
+participant "CLI\nHandler" as CLI
+participant "App\nContainer" as App
+participant "Config\nLoader" as ConfigLoader
+participant "Context\nBuilder" as ContextBuilder
+participant "Pipeline\nOrchestrator" as Pipeline
+participant "Kernel\nBuilder" as Kernel
+participant "Rootfs\nBuilder" as Rootfs
+participant "Fingerprinter" as FP
+participant "Executor" as Exec
+participant "FileSystem" as FS
+
+note over Dev,FS
+  Example: elmos kernel build --config path/to/config
+end note
+
+Dev ->> CLI : kernel build --config
+
+activate CLI
+CLI ->> App : initialize_app()
+activate App
+
+App ->> ConfigLoader : load_config(path)
+activate ConfigLoader
+ConfigLoader ->> FS : read_file(config_path)
+activate FS
+FS -->> ConfigLoader : yaml_content
+deactivate FS
+ConfigLoader ->> ConfigLoader : parse_yaml()
+ConfigLoader -->> App : configuration
+deactivate ConfigLoader
+
+App ->> ContextBuilder : build_context(config)
+activate ContextBuilder
+ContextBuilder ->> ContextBuilder : validate_workspace()
+ContextBuilder ->> ContextBuilder : setup_paths()
+ContextBuilder -->> App : context
+deactivate ContextBuilder
+
+App ->> Pipeline : execute_build(context)
+activate Pipeline
+
+Pipeline ->> FP : check_cache(context)
+activate FP
+FP ->> FS : read_fingerprint()
+FS -->> FP : cached_hash
+FP ->> FP : compare_current()
+note right of FP
+  If cache valid: skip builds
+  If cache invalid: rebuild
+end note
+FP -->> Pipeline : cache_valid: bool
+deactivate FP
+
+alt Cache VALID - Incremental Build
+    Pipeline -->> App : use_cached_artifacts()
+else Cache INVALID - Full Build
+    Pipeline ->> Pipeline : create_dag()
+    Pipeline ->> Kernel : build_kernel(context)
+    activate Kernel
+    
+    Kernel ->> Exec : run(stop_token, "make", args)
+    activate Exec
+    Exec ->> FS : create_output_dir()
+    Exec ->> Exec : fork_exec(make_process)
+    note right of Exec
+      May take 30-60s for full
+      kernel compilation
+    end note
+    Exec -->> Kernel : result
+    deactivate Exec
+    
+    Kernel ->> FP : fingerprint_kernel()
+    FP ->> FS : hash_artifacts()
+    FP -->> Kernel : kernel_hash
+    
+    Kernel -->> Pipeline : kernel_built
+    deactivate Kernel
+    
+    Pipeline ->> Rootfs : build_rootfs(context)
+    activate Rootfs
+    note right of Pipeline
+      Kernel and rootfs can
+      execute in parallel per DAG
+    end note
+    
+    Rootfs ->> Exec : run(stop_token, "debootstrap", args)
+    activate Exec
+    Exec ->> FS : create_filesystem_dirs()
+    Exec -->> Rootfs : rootfs_created
+    deactivate Exec
+    
+    Rootfs ->> Exec : run(stop_token, "mount", args)
+    Rootfs ->> Exec : run(stop_token, "chroot_install", args)
+    
+    Rootfs ->> FP : fingerprint_rootfs()
+    FP -->> Rootfs : rootfs_hash
+    
+    Rootfs -->> Pipeline : rootfs_built
+    deactivate Rootfs
+    
+    Pipeline ->> FP : store_fingerprints()
+    FP ->> FS : write_fingerprint(hashes)
+    FP -->> Pipeline : done
+end
+
+Pipeline ->> Pipeline : validate_artifacts()
+Pipeline -->> App : build_complete
+deactivate Pipeline
+
+App ->> CLI : print_summary()
+note right of CLI
+  Build time, artifact paths,
+  next steps, warnings
+end note
+
+CLI -->> Dev : output
+
+deactivate App
+deactivate CLI
+
+Dev ->> Dev : artifacts ready for deployment
+
+note over Developer,FS
+  Result: zImage, *.ko, rootfs.cpio
+  All outputs in workspace/build/
+  Ready to boot on hardware or QEMU
+end note

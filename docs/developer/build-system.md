@@ -1,20 +1,63 @@
 # Build System
 
-ELMOS uses Task for build automation and Go's domain builders for kernel/module/app compilation.
+ELMOS uses CMake 3.25+ for building and optional Task for developer workflow automation.
+
+---
+
+## CMake Build
+
+### Presets
+
+| Preset    | Purpose                                  | Command                  |
+| --------- | ---------------------------------------- | ------------------------ |
+| `default` | System packages + FetchContent           | `cmake --preset default` |
+| `vcpkg`   | All deps via vcpkg (requires VCPKG_ROOT) | `cmake --preset vcpkg`   |
+| `release` | Optimized release build                  | `cmake --preset release` |
+
+### Build Commands
+
+```bash
+cmake --preset default              # Configure (first time)
+cmake --build build --parallel      # Build
+cmake --build build --target test   # Run tests
+cmake --install build --prefix /usr/local  # Install
+```
+
+### Dependencies
+
+Two strategies supported:
+1. **System packages (apt)** + FetchContent for inja/ftxui
+2. **vcpkg** for all packages (set `VCPKG_ROOT` env)
+
+| Library       | Purpose          | apt Package          | FetchContent |
+| ------------- | ---------------- | -------------------- | ------------ |
+| CLI11         | CLI parsing      | `libcli11-dev`       | —            |
+| yaml-cpp      | YAML config      | `libyaml-cpp-dev`    | —            |
+| nlohmann/json | JSON handling    | `nlohmann-json3-dev` | —            |
+| spdlog        | Logging          | `libspdlog-dev`      | —            |
+| OpenSSL       | SHA256 checksums | `libssl-dev`         | —            |
+| cpp-httplib   | HTTP client      | `libcpp-httplib-dev` | —            |
+| Catch2        | Testing          | `catch2`             | —            |
+| inja          | Template engine  | —                    | v3.4.0       |
+| FTXUI         | Terminal UI      | —                    | v5.0.0       |
 
 ---
 
 ## Taskfile Overview
 
-The `Taskfile.yml` provides development tasks:
+The `Taskfile.yml` provides developer workflow tasks:
 
-| Task               | Purpose                                    |
-| ------------------ | ------------------------------------------ |
-| `task build`       | Compile `build/elmos` with version ldflags |
-| `task test`        | Run tests with coverage                    |
-| `task dev:check`   | Format + lint                              |
-| `task docs`        | Build documentation site                   |
-| `task release:all` | Cross-platform Darwin builds               |
+| Task                | Purpose                   |
+| ------------------- | ------------------------- |
+| `task build`        | Configure + build binary  |
+| `task clean`        | Remove build directory    |
+| `task test`         | Run all tests             |
+| `task release`      | Optimized release build   |
+| `task docs`         | Build documentation site  |
+| `task install`      | Install to /usr/local/bin |
+| `task dev:check`    | Pre-commit style check    |
+| `task dev:setup`    | Full development setup    |
+| `task elmos:doctor` | Run `elmos doctor`        |
 
 ---
 
@@ -22,49 +65,38 @@ The `Taskfile.yml` provides development tasks:
 
 ### KernelBuilder
 
-Located in `core/domain/builder/kernel.go`:
+Located in `src/domain/builder/kernel.hpp`:
 
-```go
-type KernelBuilder struct {
-    exec executor.Executor
-    fs   filesystem.FileSystem
-    cfg  *config.Config
-    ctx  *elcontext.Context
-    tm   *toolchain.Manager
-}
+```cpp
+class KernelBuilder {
+public:
+    KernelBuilder(context::Context* ctx, toolchain::Manager* tm);
+
+    auto build(std::stop_token token, BuildOptions opts) -> VoidResult;
+    auto configure(std::stop_token token, const std::string& type) -> VoidResult;
+    auto clean(std::stop_token token) -> VoidResult;
+};
 ```
 
 ### BuildOptions
 
-```go
-type BuildOptions struct {
-    Jobs    int      // Parallel jobs (-j)
-    Targets []string // e.g., ["Image", "dtbs", "modules"]
-}
+```cpp
+struct BuildOptions {
+    int jobs = 0;                      // Parallel jobs (-j)
+    std::vector<std::string> targets;  // e.g., {"Image", "dtbs", "modules"}
+};
 ```
-
-### Key Methods
-
-| Method                       | Description                     |
-| ---------------------------- | ------------------------------- |
-| `Build(ctx, opts)`           | Execute `make` with targets     |
-| `Configure(ctx, configType)` | Run menuconfig, defconfig, etc. |
-| `Clean(ctx)`                 | Run `make distclean`            |
-| `HasConfig()`                | Check if `.config` exists       |
-| `HasKernelImage()`           | Check if kernel image built     |
 
 ### Build Flow
 
 ```
-KernelBuilder.Build()
-    ├── Validate targets against ValidBuildTargets
-    ├── Get toolchain environment (getToolchainEnv)
+KernelBuilder::build()
+    ├── Get toolchain environment
     ├── Construct make arguments:
     │   - ARCH=arm64
-    │   - LLVM=1
     │   - CROSS_COMPILE=<prefix>
     │   - -j<jobs>
-    └── executor.RunWithEnv(make, args...)
+    └── exec_->run_with_env(token, env, "make", args)
 ```
 
 ---
@@ -73,25 +105,19 @@ KernelBuilder.Build()
 
 ### ModuleBuilder
 
-Located in `core/domain/builder/module.go`:
+Located in `src/domain/builder/module.hpp`:
 
-```go
-type ModuleBuilder struct {
-    exec executor.Executor
-    fs   filesystem.FileSystem
-    cfg  *config.Config
-    ctx  *elcontext.Context
-    tm   *toolchain.Manager
-}
+```cpp
+class ModuleBuilder {
+public:
+    ModuleBuilder(context::Context* ctx, toolchain::Manager* tm);
+
+    auto build(std::stop_token token, const std::string& name) -> VoidResult;
+    auto clean(std::stop_token token, const std::string& name) -> VoidResult;
+    auto create_module(const std::string& name) -> VoidResult;
+    auto get_modules() -> Result<std::vector<ModuleInfo>>;
+};
 ```
-
-### Key Methods
-
-| Method                   | Description                       |
-| ------------------------ | --------------------------------- |
-| `Build(ctx, modulePath)` | Build `.ko` from module source    |
-| `Clean(ctx, modulePath)` | Clean module build artifacts      |
-| `Create(name)`           | Scaffold new module from template |
 
 ---
 
@@ -99,91 +125,36 @@ type ModuleBuilder struct {
 
 ### AppBuilder
 
-Located in `core/domain/builder/app.go`:
-
-```go
-type AppBuilder struct {
-    exec executor.Executor
-    fs   filesystem.FileSystem
-    cfg  *config.Config
-    ctx  *elcontext.Context
-    tm   *toolchain.Manager
-}
-```
-
-Cross-compiles userspace applications for the target architecture.
+Located in `src/domain/builder/app.hpp`. Cross-compiles userspace applications for the target architecture.
 
 ---
 
-## Environment Setup
+## CMake Modules
 
-### GetMakeEnv()
+### Platform.cmake
 
-The `Context.GetMakeEnv()` method constructs the build environment:
+OS detection and platform-specific source selection:
 
-```go
-// Prepends to PATH:
-// - GNU sed (libexec/gnubin)
-// - GNU coreutils
-// - LLVM bin
-// - LLD bin
-// - e2fsprogs sbin
-
-// Sets:
-// - ARCH=<target>
-// - LLVM=1
-// - CROSS_COMPILE=<prefix>
-// - HOSTCFLAGS=<macOS compatibility flags>
+```cmake
+include(Platform)
+elmos_platform_sources(target DARWIN darwin.cpp LINUX linux.cpp WINDOWS windows.cpp)
 ```
 
-### HOSTCFLAGS
+### Version.cmake
 
-macOS-specific flags for host tools:
+Git-based version injection via `add_compile_definitions`:
 
-```
--I<assets/libraries>     # Custom elf.h, byteswap.h
--I<libelf include>       # Homebrew libelf
--D_UUID_T
--D__GETHOSTUUID_H
--D_DARWIN_C_SOURCE
--D_FILE_OFFSET_BITS=64
-```
-
----
-
-## Valid Build Targets
-
-Defined in `core/config/defaults.go`:
-
-```go
-var ValidBuildTargets = map[string]bool{
-    "Image":           true,
-    "zImage":          true,  // ARM32
-    "dtbs":            true,
-    "modules":         true,
-    "modules_prepare": true,
-    "all":             true,
-    "vmlinux":         true,
-}
+```cmake
+add_compile_definitions(
+    ELMOS_VERSION="${ELMOS_GIT_VERSION}"
+    ELMOS_COMMIT="${ELMOS_GIT_COMMIT}"
+    ELMOS_BUILD_DATE="${ELMOS_BUILD_DATE}"
+)
 ```
 
----
+### EmbedResources.cmake
 
-## Valid Config Types
-
-```go
-var KernelConfigTypes = []string{
-    "defconfig",
-    "tinyconfig",
-    "kvm_guest.config",
-    "menuconfig",
-    "xconfig",
-    "nconfig",
-    "oldconfig",
-    "olddefconfig",
-    // ...
-}
-```
+Compile-time resource embedding (replaces Go's `//go:embed`).
 
 ---
 
@@ -193,7 +164,6 @@ var KernelConfigTypes = []string{
 
 ```bash
 elmos kernel build              # Default targets for arch
-elmos kernel build Image        # Specific target
 elmos kernel build -j 8         # Custom job count
 ```
 
@@ -206,9 +176,17 @@ elmos kernel config menuconfig  # Interactive
 
 ---
 
-## Dependencies
+## Compiler Flags
 
-- **Go 1.21+** - Language runtime
-- **Task** - `brew install go-task`
-- **LLVM** - Cross-compiler (`brew install llvm`)
-- **GNU tools** - `brew install gnu-sed coreutils`
+Warning flags enabled globally:
+
+```cmake
+add_compile_options(
+    -Wall -Wextra -Wpedantic
+    -Wno-unused-parameter
+    -Wno-missing-field-initializers
+    -Wshadow -Wnon-virtual-dtor
+)
+```
+
+Standard: C++23 with GCC 13+.

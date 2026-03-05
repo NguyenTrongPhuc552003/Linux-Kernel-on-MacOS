@@ -2,7 +2,21 @@
 
 User-facing changes in ELMOS releases.
 
-## v6.18 (Latest)
+## v4.0.0 (C++23 Rewrite)
+
+- **Complete rewrite** from Go to C++23 (GCC 13+)
+- CMake 3.25+ build system with presets (default, vcpkg, release)
+- Cross-platform support: Linux, macOS, Windows
+- CLI11 replaces Cobra for command parsing
+- FTXUI replaces Bubble Tea for terminal UI
+- Plugin system with builtin and external plugin support
+- DAG-based build orchestration with fingerprinting
+- BSP registry client for firmware blob management
+- OpenSSL EVP API for SHA256 checksums
+- Cooperative cancellation via `std::stop_token`
+- `std::expected<T, Error>` for error handling (no exceptions)
+
+## v6.18
 
 - Support for Linux v6.18+ kernels
 - Patches for `copy_file_range()` incompatibility

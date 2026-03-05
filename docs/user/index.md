@@ -1,6 +1,6 @@
 # User Guide Overview
 
-This section provides comprehensive guides for using ELMOS to build and develop Linux kernels on macOS.
+This section provides comprehensive guides for using ELMOS to build and develop embedded Linux systems.
 
 ## Getting Started
 
@@ -12,7 +12,7 @@ If you're new to ELMOS:
 
 ## Core Workflows
 
-- **Kernel Development**: [Clone, configure, and build kernels](kernel-building.md)
+- **Kernel Development**: [Configure and build kernels](kernel-building.md)
 - **Module & App Creation**: [Develop kernel modules and userspace apps](modules-and-apps.md)
 - **Emulation**: [Run and debug with QEMU](qemu-integration.md)
 - **Interactive Mode**: [Use the TUI](tui-guide.md)
@@ -25,10 +25,10 @@ If you're new to ELMOS:
 
 ## Prerequisites
 
-ELMOS requires macOS Sequoia or later with:
+ELMOS supports Linux (primary), macOS, and Windows (experimental):
 
-- Homebrew for dependencies
-- Xcode Command Line Tools
+- CMake 3.25+ and GCC 13+ (or compatible C++23 compiler)
+- System development packages (see [Installation](installation.md))
 - Basic familiarity with terminal commands
 
 For advanced features, install crosstool-ng toolchains.

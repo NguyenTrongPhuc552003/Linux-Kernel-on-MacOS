@@ -1,0 +1,185 @@
+@startuml build-pipeline
+!theme plain
+
+title ELMOS Build Pipeline — Complete State Machine & DAG Execution
+
+state "Initialization" as Init {
+    state "Workspace Validation" as WsValidate
+    state "Config Loading" as ConfigLoad
+    state "Context Setup" as ContextSetup
+    state "Fingerprint Cache Check" as FingerprintCheck
+    
+    WsValidate --> ConfigLoad
+    ConfigLoad --> ContextSetup
+    ContextSetup --> FingerprintCheck
+}
+
+state "DAG Planning" as DAGPlan {
+    state "Dependency Analysis" as DepAnalysis
+    state "Task Planning" as TaskPlan
+    state "Parallelization Strategy" as ParallelStrat
+    
+    DepAnalysis --> TaskPlan
+    TaskPlan --> ParallelStrat
+}
+
+state "Parallel Build Execution" as ParallelBuild {
+    state "Kernel Build" as KernelBuildSt {
+        state "Patch Application" as KernelPatch
+        state "Configure" as KernelCfg
+        state "Compile" as KernelCompile
+        state "Install Headers" as InstallHeaders
+        
+        KernelPatch --> KernelCfg
+        KernelCfg --> KernelCompile
+        KernelCompile --> InstallHeaders
+    }
+    
+    state "Module Build" as ModuleBuildSt {
+        state "Collect Sources" as CollectSrc
+        state "Configure for Kernel" as ModuleCfg
+        state "Build Modules" as BuildMods
+        
+        CollectSrc --> ModuleCfg
+        ModuleCfg --> BuildMods
+    }
+    
+    state "Rootfs Creation" as RootfsSt {
+        state "Bootstrap Filesystem" as Bootstrap
+        state "Install Packages" as InstallPkgs
+        state "Install Modules" as InstallMods
+        state "Setup Init Scripts" as SetupInit
+        
+        Bootstrap --> InstallPkgs
+        InstallPkgs --> InstallMods
+        InstallMods --> SetupInit
+    }
+    
+    KernelBuildSt --> ModuleBuildSt : kernel ready
+    InstallHeaders --> ModuleBuildSt : headers available
+    BuildMods --> RootfsSt : modules compiled
+}
+
+state "Assembly & Integration" as Assembly {
+    state "BSP Integration" as BSPInt
+    state "Firmware Injection" as FirmwareInj
+    state "Device Tree Setup" as DeviceTreeSetup
+    state "Final Image Creation" as FinalImage
+    
+    BSPInt --> FirmwareInj
+    FirmwareInj --> DeviceTreeSetup
+    DeviceTreeSetup --> FinalImage
+}
+
+state "Post-Build Validation" as PostBuild {
+    state "Image Verification" as ImageVerify
+    state "QEMU Boot Test" as QEMUTest
+    state "Artifact Archiving" as Archive
+    
+    ImageVerify --> QEMUTest
+    QEMUTest --> Archive
+}
+
+state "Success" as Success
+state "Cleanup & Error Recovery" as ErrorRecovery
+state "Failed" as Failed
+
+' Main flow
+[*] --> Init
+Init --> DAGPlan : ✓ validated
+DAGPlan --> FingerprintCheck : cached?
+
+FingerprintCheck --> ParallelBuild : ✓ must rebuild\nor ✗ no cache
+ParallelBuild --> Assembly : ✓ all builds passed
+
+Assembly --> PostBuild : ✓ assembly done
+PostBuild --> Success : ✓ all tests passed
+
+' Error handling
+Init -.-> ErrorRecovery : ✗ validation failed
+DAGPlan -.-> ErrorRecovery : ✗ invalid DAG
+ParallelBuild -.-> ErrorRecovery : ✗ build error
+Assembly -.-> ErrorRecovery : ✗ assembly error
+PostBuild -.-> ErrorRecovery : ✗ test failed
+
+ErrorRecovery --> Failed : aborted
+Success --> [*]
+Failed --> [*]
+
+' Cache bypass
+FingerprintCheck --> Assembly : ✓ cache valid\n(skip builds)
+
+state Cache {
+    state "All Artifacts\nMatched" as CacheHit
+}
+
+FingerprintCheck --> Cache : cache lookup
+
+Cache --> Assembly : return from cache\n(skip parallel phase)
+Cache --> PostBuild : skip full validation,\nrun quick checks
+
+note right of WsValidate
+  Verify workspace structure,
+  writing permissions,
+  directory existence
+end note
+
+note right of ContextSetup
+  Immutable context prepared
+  with architecture, paths,
+  build flags, environment
+end note
+
+note right of DepAnalysis
+  Analyze task dependency graph
+  to determine correct build order
+  and identify parallelizable tasks
+end note
+
+note right of ParallelStrat
+  Compute optimal parallelization
+  based on CPU count and
+  dependency constraints
+end note
+
+note right of KernelBuildSt
+  Compile kernel for target
+  architecture with board
+  configuration and patches
+end note
+
+note right of ModuleBuildSt
+  Build kernel modules against
+  kernel headers from kernel build
+  (parallel with other modules)
+end note
+
+note right of RootfsSt
+  Create minimal root filesystem
+  (debootstrap or musl-based)
+  with essential packages + modules
+end note
+
+note right of FirmwareInj
+  Inject BSP-specific firmware blobs
+  to enable device support
+  (Wifi, Bluetooth, GPU, etc)
+end note
+
+note right of QEMUTest
+  Boot with QEMU to validate
+  kernel, modules, and rootfs
+  work together correctly
+end note
+
+note right of CacheHit
+  If fingerprints match cached build,
+  skip kernel/module compilation
+  and rootfs creation entirely
+end note
+
+note right of ErrorRecovery
+  Rollback partially-built artifacts,
+  log errors, execute plugin cleanup hooks,
+  return error to user
+end note

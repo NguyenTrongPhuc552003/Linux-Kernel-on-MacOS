@@ -1,0 +1,96 @@
+@startuml system-context
+!theme plain
+skinparam linetype ortho
+skinparam actorStyle awesome
+
+title ELMOS System Context — Embedded Linux SDK
+
+actor "Developer" as Dev
+actor "CI/CD\nPipeline" as CICD
+actor "Package\nManager" as PackageMgr
+
+system "ELMOS SDK" as ELMOS {
+    component [CLI\nInterface] as CLI
+    component [TUI\nInterface] as TUI
+}
+
+system "External\nDependencies" {
+    component [GCC\nToolchain] as GCC
+    component [Kernel\nRepo] as KernelRepo
+    component [BSP\nRegistry] as BSPRegistry
+    component [Package\nRepos] as PackageRepos
+}
+
+system "Output\nArtifacts" {
+    component [Zimage\nBinary] as Zimage
+    component [Kernel\nModules] as Modules
+    component [Rootfs\nImage] as Rootfs
+    component [Boot\nImage] as BootImage
+    component [QEMU\nDisk] as QEMUDisk
+}
+
+system "Deployment\nTargets" {
+    component [Embedded\nLinux Board] as Board
+    component [QEMU\nEmulator] as Emulator
+    component [Docker\nContainer] as Docker
+}
+
+' Developer interactions
+Dev --> CLI : commands (kernel build, init, etc)
+Dev --> TUI : interactive configuration
+CLI --> Modules : builds
+CLI --> Rootfs : creates
+TUI --> Zimage : configures/builds
+CLI --> BootImage : generates
+
+' CICD automation
+CICD --> CLI : automated builds
+CICD --> Modules : integrates modules
+
+' External dependencies
+GCC -.-> CLI : cross-compiler toolchain
+KernelRepo -.-> CLI : kernel sources
+BSPRegistry -.-> CLI : board definitions
+PackageRepos -.-> CLI : package metadata
+PackageMgr -.-> PackageRepos : publishes ELMOS
+
+' Output artifacts
+Modules --> Rootfs : includes in image
+Zimage --> BootImage : combines with bootloader
+Rootfs --> Board : deploys
+BootImage --> Board : boots
+QEMUDisk --> Emulator : boots with disk
+Rootfs --> QEMUDisk : creates disk image
+Rootfs --> Docker : creates layers
+
+' Deployment targets
+Emulator -.-> Board : test/validate before deploy
+Board -.-> Dev : feedback
+Emulator -.-> Dev : debugging
+Docker -.-> CICD : containerized builds
+
+note top of Dev
+  Primary user interacting with
+  ELMOS for embedded Linux development
+end note
+
+note top of ELMOS
+  Embedded Linux SDK — Buildroot alternative
+  Supports: ARM, ARM64, RISC-V
+  Languages: C++23 with no dynamic allocation
+end note
+
+note right of GCC
+  Cross-compiler for target architecture
+  (aarch64, arm, riscv64, etc)
+end note
+
+note right of Modules
+  Kernel modules (.ko files)
+  compiled against target kernel
+end note
+
+note bottom of Emulator
+  QEMU-based emulation
+  for testing without hardware
+end note

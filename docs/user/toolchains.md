@@ -1,10 +1,10 @@
 # Toolchain Management
 
-ELMOS integrates [crosstool-ng](https://crosstool-ng.github.io/) for building native cross-compilers on macOS.
+ELMOS integrates [crosstool-ng](https://crosstool-ng.github.io/) for building native cross-compilers.
 
 ## Overview
 
-Toolchains enable cross-compilation for target architectures without VMs. ELMOS supports pre-configured targets with optimized settings.
+Toolchains enable cross-compilation for target architectures. ELMOS supports pre-configured targets with optimized settings.
 
 ## Supported Targets
 
@@ -19,15 +19,15 @@ Toolchains enable cross-compilation for target architectures without VMs. ELMOS 
 ### Install crosstool-ng
 
 ```bash
-./build/elmos toolchains install
+./build/bin/elmos toolchains install
 ```
 
-Clones and builds crosstool-ng to `build/toolchains/crosstool-ng/`.
+Clones and builds crosstool-ng to `~/.elmos/toolchains/crosstool-ng/`.
 
 ### List Targets
 
 ```bash
-./build/elmos toolchains list
+./build/bin/elmos toolchains list
 ```
 
 Shows available configurations.
@@ -35,31 +35,31 @@ Shows available configurations.
 ### Select Target
 
 ```bash
-./build/elmos toolchains <target>
+./build/bin/elmos toolchains select <target>
 ```
 
-Example: `./build/elmos toolchains riscv64-unknown-linux-gnu`
+Example: `./build/bin/elmos toolchains select riscv64-unknown-linux-gnu`
 
 ### Build Toolchain
 
 ```bash
-./build/elmos toolchains build
+./build/bin/elmos toolchains build
 ```
 
-Builds the selected toolchain (~30-60 min). Installs to `build/toolchains/install/`.
+Builds the selected toolchain (~30–60 min). Installs to `~/.elmos/toolchains/x-tools/`.
 
 ### Check Status
 
 ```bash
-./build/elmos toolchains status
+./build/bin/elmos toolchains status
 ```
 
-Verifies installation and environment variables.
+Verifies installation and shows installed toolchains.
 
 ### Show Environment
 
 ```bash
-./build/elmos toolchains env
+./build/bin/elmos toolchains env
 ```
 
 Displays `CROSS_COMPILE`, `PATH`, etc.
@@ -67,24 +67,22 @@ Displays `CROSS_COMPILE`, `PATH`, etc.
 ### Customize Config
 
 ```bash
-./build/elmos toolchains menuconfig
+./build/bin/elmos toolchains menuconfig
 ```
 
-Interactive configuration for advanced users.
+Interactive configuration for advanced users (requires crosstool-ng).
 
 ### Clean Artifacts
 
 ```bash
-./build/elmos toolchains clean
+./build/bin/elmos toolchains clean
 ```
 
 Removes build artifacts.
 
 ## Automatic Detection
 
-Kernel, module, and app builds auto-detect installed toolchains based on selected architecture (`./build/elmos arch <arch>`).
-
-Falls back to Homebrew LLVM if no toolchain installed.
+Kernel, module, and app builds auto-detect installed toolchains based on the selected architecture (`./build/bin/elmos arch set <arch>`).
 
 ## Custom Toolchains
 
@@ -92,6 +90,6 @@ For custom targets, modify configs in `assets/toolchains/configs/` and rebuild.
 
 ## Troubleshooting
 
-- Build fails: Ensure all deps installed (`./build/elmos doctor`)
+- Build fails: Ensure all deps installed (`./build/bin/elmos doctor`)
 - Slow builds: Use more cores with `CT_PARALLEL_JOBS` env var
 - Conflicts: Clean and rebuild

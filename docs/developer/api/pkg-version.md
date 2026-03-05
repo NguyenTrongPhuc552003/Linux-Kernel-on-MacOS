@@ -1,47 +1,63 @@
-# Package Version API
+# Version API
 
-Version information management.
+Version information injected at compile time via CMake.
 
-## Info Struct
+---
 
-```go
-type Info struct {
-    Version   string `json:"version"`
-    Commit    string `json:"commit"`
-    BuildDate string `json:"buildDate"`
-    GoVersion string `json:"goVersion"`
-    OS        string `json:"os"`
-    Arch      string `json:"arch"`
+## Compile-Time Macros
+
+Defined in `cmake/Version.cmake` and injected via `add_compile_definitions()`:
+
+| Macro              | Example Value          | Description         |
+| ------------------ | ---------------------- | ------------------- |
+| `ELMOS_VERSION`    | `v3.2.0-6-gd781c77`    | Git describe tag    |
+| `ELMOS_COMMIT`     | `d781c77`              | Short commit SHA    |
+| `ELMOS_BUILD_DATE` | `2025-01-15T10:30:00Z` | ISO 8601 build time |
+
+---
+
+## Usage in Source Code
+
+```cpp
+// src/app/commands/version.cpp
+auto register_version(App& app, CLI::App& cli) {
+    auto* cmd = cli.add_subcommand("version", "Show version info");
+    cmd->callback([&app] {
+        app.printer().info("{} ({})", ELMOS_VERSION, ELMOS_COMMIT);
+    });
 }
 ```
 
-Holds build and runtime info.
+---
 
-## Functions
+## CMake Implementation
 
-### Get
+```cmake
+# cmake/Version.cmake
+execute_process(
+    COMMAND git describe --tags --always --dirty
+    OUTPUT_VARIABLE ELMOS_GIT_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    OUTPUT_VARIABLE ELMOS_GIT_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(TIMESTAMP ELMOS_BUILD_DATE "%Y-%m-%dT%H:%M:%SZ" UTC)
 
-```go
-func Get() Info
+add_compile_definitions(
+    ELMOS_VERSION="${ELMOS_GIT_VERSION}"
+    ELMOS_COMMIT="${ELMOS_GIT_COMMIT}"
+    ELMOS_BUILD_DATE="${ELMOS_BUILD_DATE}"
+)
 ```
 
-Returns current version info, populated via ldflags.
+---
 
-### String / Short
-
-```go
-func (i Info) String() string
-func (i Info) Short() string
-```
-
-Formatted output for CLI.
-
-## Build Process
-
-Version info set at build time:
+## CLI Output
 
 ```bash
-go build -ldflags "-X 'github.com/NguyenTrongPhuc552003/elmos/core/app/version.Version=1.0.0' -X 'github.com/NguyenTrongPhuc552003/elmos/core/app/version.Commit=$(git rev-parse HEAD)' -X 'github.com/NguyenTrongPhuc552003/elmos/core/app/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)'" -o build/elmos ./cmd/elmos
+$ ./build/bin/elmos version
+v3.2.0-6-gd781c77-dirty (d781c77)
 ```
-
-Used in `Taskfile.yml`.

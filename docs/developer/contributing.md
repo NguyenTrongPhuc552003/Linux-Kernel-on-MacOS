@@ -11,13 +11,20 @@ Guidelines for contributing to ELMOS.
 git clone https://github.com/NguyenTrongPhuc552003/elmos.git
 cd elmos
 
-# Setup
-task dev:setup
+# Install dependencies (Ubuntu/Debian)
+sudo apt install libcli11-dev libyaml-cpp-dev nlohmann-json3-dev \
+    libspdlog-dev libssl-dev catch2 libcpp-httplib-dev \
+    pkg-config ninja-build
 
-# Develop
-task dev:check   # Format + lint
-task test        # Run tests
-task build       # Build binary
+# Build
+cmake --preset default
+cmake --build build --parallel
+
+# Test
+cmake --build build --target test
+
+# Verify
+./build/bin/elmos doctor
 ```
 
 ---
@@ -37,20 +44,20 @@ Signed-off-by: Your Name <email@example.com>
 
 **Scope examples:**
 
-| Scope                   | Example                |
-| ----------------------- | ---------------------- |
-| `core: domain: builder` | Kernel builder changes |
-| `core: app: commands`   | CLI command changes    |
-| `docs: user: qemu`      | User doc updates       |
-| `.github: workflows`    | CI changes             |
-| `Taskfile`              | Build task changes     |
+| Scope                  | Example                |
+| ---------------------- | ---------------------- |
+| `src: domain: builder` | Kernel builder changes |
+| `src: app: commands`   | CLI command changes    |
+| `docs: user: qemu`     | User doc updates       |
+| `cmake`                | Build system changes   |
+| `tests`                | Test changes           |
 
 **Examples:**
 
 ```bash
-git commit -sm "core: domain: emulator: Add machine validation
+git commit -sm "src: domain: emulator: Add machine validation
 
-- Add ValidateMachine function
+- Add validate_machine method
 - Improve error messages"
 
 git commit -sm "docs: user: kernel-building: Add troubleshooting table
@@ -69,8 +76,8 @@ git commit -sm "docs: user: kernel-building: Add troubleshooting table
 
 2. **Make changes with tests**
    ```bash
-   task dev:check
-   task test
+   cmake --build build --parallel
+   cmake --build build --target test
    ```
 
 3. **Push and create PR**
@@ -88,21 +95,23 @@ git commit -sm "docs: user: kernel-building: Add troubleshooting table
 
 ## Code Standards
 
-### Go Style
+### C++ Style
 
-- Run `gofmt` and `goimports`
-- Follow [Effective Go](https://go.dev/doc/effective_go)
-- Use interfaces for testability
-- Constructor pattern: `NewXxx(deps...) *Xxx`
+- C++23 standard (GCC 13+)
+- Use `auto` for return types on method declarations
+- Use `std::expected<T, Error>` for error handling (no exceptions)
+- Constructor injection via raw pointers (no ownership transfer)
+- Use `snake_case` for functions/variables, `PascalCase` for types
+- Prefer designated initializers for struct construction
 
 ### Testing
 
-- Table-driven tests
-- Mock infra interfaces
-- Aim for 80%+ coverage on new code
+- Catch2 v3 framework
+- Mock infrastructure interfaces (Executor, FileSystem)
+- Test domain logic in isolation
 
 ```bash
-task test:cover
+cmake --build build --target test
 ```
 
 ---
@@ -110,8 +119,8 @@ task test:cover
 ## Documentation
 
 - Update user docs for CLI changes
-- Update developer docs for API changes
-- Add code comments for exported types/functions
+- Update developer API docs for interface changes
+- Add code comments only where logic isn't self-evident
 
 ---
 
@@ -121,8 +130,8 @@ task test:cover
 
 Include:
 
-- ELMOS version (`elmos version`)
-- macOS version
+- ELMOS version (`./build/bin/elmos version`)
+- OS and compiler version
 - Steps to reproduce
 - Expected vs actual behavior
 
@@ -133,6 +142,18 @@ Include:
 - Use case description
 - Proposed solution
 - Alternatives considered
+
+---
+
+## Code Review Checklist
+
+- [ ] `cmake --build build --parallel` produces zero errors/warnings
+- [ ] `./build/bin/elmos doctor` runs without crashes
+- [ ] No `system()` or `popen()` calls in domain or plugin code
+- [ ] No hardcoded OS-specific paths; use platform layer
+- [ ] All errors via `Result<T>` / `VoidResult`, not exceptions
+- [ ] New CLI commands wired in `commands.hpp`
+- [ ] New plugins registered in builtin factory map
 
 ---
 

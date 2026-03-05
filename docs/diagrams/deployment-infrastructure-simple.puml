@@ -1,0 +1,32 @@
+@startuml deployment-infra-simple
+!theme plain
+skinparam componentStyle rectangle
+
+title Deployment & Build Infrastructure
+
+node "Developer Environment" {
+    [ELMOS CLI] as App
+    [QEMU Emulator] as Emulator
+}
+
+node "Toolchain Cache" {
+    [GCC Compilers] as Toolchain
+    [Kernel Sources] as Kernel
+    [Board Definitions] as BSP
+}
+
+node "Build Artifacts" {
+    [Compiled Binaries] as Artifacts
+    [Root Filesystem] as Rootfs
+    [Disk Images] as Images
+}
+
+App --> Toolchain : get tools
+App --> Kernel : clone/patch
+App --> BSP : read firmware
+Toolchain --> Artifacts : compile
+App --> Rootfs : create
+Rootfs --> Images : assemble
+Emulator -.-> Images : boot
+
+@enduml

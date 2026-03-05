@@ -1,23 +1,37 @@
 # Installation
 
-This guide covers installing ELMOS and its prerequisites on macOS.
+This guide covers installing ELMOS and its prerequisites.
 
 ## Prerequisites
 
-ELMOS requires macOS Sequoia (15.0+) or later. Install these dependencies via Homebrew:
+### Ubuntu/Debian (recommended)
 
 ```bash
-brew install llvm lld gnu-sed make libelf git qemu fakeroot e2fsprogs coreutils go-task wget
-```
-
-Install Xcode Command Line Tools for SDK headers:
-
-```bash
-xcode-select --install
+sudo apt install build-essential cmake ninja-build pkg-config \
+    libcli11-dev libyaml-cpp-dev nlohmann-json3-dev libspdlog-dev \
+    libssl-dev catch2 libcpp-httplib-dev \
+    git qemu-system debootstrap
 ```
 
 !!! note
-    If you encounter "gmake not found", use `brew install make` and alias `gmake` to `make`.
+    CMake 3.25+ is required. If your distro ships an older version: `pip3 install cmake`
+
+### macOS (Homebrew)
+
+```bash
+brew install cmake ninja pkg-config yaml-cpp nlohmann-json spdlog openssl cpp-httplib git qemu
+```
+
+!!! note
+    Some packages (CLI11, Catch2) may need to be installed via vcpkg or FetchContent on macOS.
+
+### Fedora/RHEL
+
+```bash
+sudo dnf install cmake ninja-build pkgconf-pkg-config gcc-c++ \
+    cli11-devel yaml-cpp-devel json-devel spdlog-devel openssl-devel \
+    catch2-devel cpp-httplib-devel git qemu
+```
 
 ## Build ELMOS
 
@@ -26,41 +40,46 @@ Clone the repository and build the binary:
 ```bash
 git clone https://github.com/NguyenTrongPhuc552003/elmos.git
 cd elmos
-task build  # Builds to build/elmos
+cmake --preset default
+cmake --build build --parallel
 ```
+
+Or with Task:
+```bash
+task build
+```
+
+The binary is produced at `build/bin/elmos`.
 
 ## Initialize Workspace
 
-Create a workspace with sparse image and config:
+Create a workspace directory structure:
 
 ```bash
-./build/elmos init
+./build/bin/elmos init my_project
 ```
 
-This generates:
-
-- `build/elmos.sparseimage` - Workspace disk image
-- `build/elmos.yaml` - Configuration file
+This generates the workspace configuration and directory layout.
 
 ## Verify Setup
 
 Run the environment doctor to check dependencies:
 
 ```bash
-./build/elmos doctor
+./build/bin/elmos doctor
 ```
 
 If issues arise, see [Troubleshooting](../user/troubleshooting.md).
 
 ## Optional: Install Toolchains
 
-For full functionality, install crosstool-ng toolchains:
+For full cross-compilation, install crosstool-ng toolchains:
 
 ```bash
-./build/elmos toolchains install  # Install crosstool-ng
-./build/elmos toolchains list     # List targets
-./build/elmos arch riscv          # Select architecture
-./build/elmos toolchains build    # Build toolchain (~30-60 min)
+./build/bin/elmos toolchains install    # Install crosstool-ng
+./build/bin/elmos toolchains list       # List targets
+./build/bin/elmos arch set arm64        # Select architecture
+./build/bin/elmos toolchains build      # Build toolchain (~30-60 min)
 ```
 
 See [Toolchains](toolchains.md) for details.

@@ -1,8 +1,8 @@
 # ELMOS Documentation
 
 <p align="center">
-  <strong>Embedded Linux on MacOS</strong><br>
-  A complete embedded Linux SDK for native kernel development on macOS.
+  <strong>Embedded Linux SDK</strong><br>
+  A complete embedded Linux development toolkit — smarter, faster alternative to Buildroot.
 </p>
 
 ---
@@ -13,28 +13,31 @@
 | ------------------------ | -------------------------------------------- |
 | 🔧 **Native Toolchains**  | Build cross-compilers for ARM64, ARM, RISC-V |
 | 🐧 **Kernel Automation**  | Clone, configure, build Linux kernels        |
-| 🖥️ **Interactive TUI**    | Rich terminal interface                      |
+| 🖥️ **Interactive TUI**    | Rich terminal interface (FTXUI)              |
 | 🚀 **QEMU Integration**   | Boot and debug with GDB                      |
-| 📦 **Module Development** | Cross-compile kernel modules                 |
+| 📦 **Module Development** | Cross-compile kernel modules and apps        |
+| 🔌 **Plugin System**      | 13 lifecycle hooks for extensibility         |
 
 ---
 
 ## Quick Start
 
 ```bash
-# Install
-brew tap NguyenTrongPhuc552003/elmos
-brew install elmos
+# Build from source (C++23, CMake)
+cmake --preset default
+cmake --build build --parallel
 
 # Initialize workspace
-elmos init
+./build/bin/elmos init my_project
+./build/bin/elmos doctor
 
 # Build kernel
-elmos kernel config defconfig
-elmos kernel build
+./build/bin/elmos kernel clone
+./build/bin/elmos kernel config defconfig
+./build/bin/elmos kernel build
 
 # Run in QEMU
-elmos qemu -r
+./build/bin/elmos qemu run
 ```
 
 ---

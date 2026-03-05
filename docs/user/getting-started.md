@@ -1,6 +1,6 @@
 # Getting Started
 
-This tutorial walks through building your first Linux kernel with ELMOS on macOS.
+This tutorial walks through building your first Linux kernel with ELMOS.
 
 ## Prerequisites
 
@@ -8,36 +8,34 @@ Ensure ELMOS is [installed](installation.md) and the workspace initialized.
 
 ## Step 1: Select Architecture
 
-Choose a target architecture (e.g., RISC-V):
+Choose a target architecture (e.g., ARM64):
 
 ```bash
-./build/elmos arch riscv
+./build/bin/elmos arch set arm64
 ```
 
-This auto-selects the `riscv64-unknown-linux-gnu` toolchain if installed.
+Available architectures: `arm64`, `arm`, `riscv`
 
 ## Step 2: Clone Kernel Source
 
 Clone the Linux kernel repository:
 
 ```bash
-./build/elmos kernel clone
+./build/bin/elmos kernel clone
 ```
-
-This clones to `build/linux/` with the selected architecture's branch.
 
 ## Step 3: Configure Kernel
 
 Generate a default config:
 
 ```bash
-./build/elmos kernel config defconfig
+./build/bin/elmos kernel config defconfig
 ```
 
 For custom config, use menuconfig:
 
 ```bash
-./build/elmos kernel config menuconfig
+./build/bin/elmos kernel config menuconfig
 ```
 
 ## Step 4: Build Kernel
@@ -45,7 +43,7 @@ For custom config, use menuconfig:
 Build the kernel with the detected toolchain:
 
 ```bash
-./build/elmos kernel build
+./build/bin/elmos kernel build
 ```
 
 This may take 10-30 minutes depending on hardware.
@@ -55,7 +53,7 @@ This may take 10-30 minutes depending on hardware.
 Create a Debian-based root filesystem:
 
 ```bash
-./build/elmos rootfs create
+./build/bin/elmos rootfs build
 ```
 
 ## Step 6: Run in QEMU
@@ -63,7 +61,7 @@ Create a Debian-based root filesystem:
 Boot the kernel in QEMU:
 
 ```bash
-./build/elmos qemu run
+./build/bin/elmos qemu run
 ```
 
 You should see the Linux boot process. Login with `root` (no password).
@@ -73,13 +71,13 @@ You should see the Linux boot process. Login with `root` (no password).
 For debugging, run with GDB stub:
 
 ```bash
-./build/elmos qemu debug
+./build/bin/elmos qemu debug
 ```
 
 Connect GDB in another terminal:
 
 ```bash
-gdb-multiarch build/linux/vmlinux
+gdb-multiarch vmlinux
 (gdb) target remote :1234
 ```
 

@@ -1,0 +1,22 @@
+{
+    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+    "name": "elmos",
+    "version": "3.2.0",
+    "description": "Embedded Linux SDK — smarter, faster alternative to Buildroot",
+    "license": "MIT",
+    "dependencies": [
+        "cli11",
+        "yaml-cpp",
+        "nlohmann-json",
+        "spdlog",
+        "inja",
+        "cpp-httplib",
+        "openssl",
+        "ftxui",
+        {
+            "name": "catch2",
+            "version>=": "3.4.0"
+        }
+    ],
+    "builtin-baseline": "57987637aac17d62bac535bc839baca3754490e6"
+}

@@ -5,10 +5,10 @@ Frequently asked questions about ELMOS.
 ## General
 
 **What is ELMOS?**  
-A native SDK for building Linux kernels on macOS without VMs.
+An embedded Linux SDK for building kernels, modules, and rootfs with cross-compilation support.
 
-**Why macOS?**  
-Leverages LLVM, Homebrew, and native tools for seamless development.
+**What platforms are supported?**  
+Linux (primary), macOS, and Windows (experimental). The host builds cross-compile for ARM64, ARM, and RISC-V targets.
 
 **Supported architectures?**  
 ARM64, ARM, RISC-V (Linux v6.18+).
@@ -16,34 +16,34 @@ ARM64, ARM, RISC-V (Linux v6.18+).
 ## Installation
 
 **Do I need Docker?**  
-No, ELMOS is fully native.
+No, ELMOS builds natively using CMake and system packages.
 
-**Can I use older macOS?**  
-Requires Sequoia+ for compatibility.
+**What compiler is needed?**  
+GCC 13+ with C++23 support.
 
 ## Toolchains
 
 **Are toolchains required?**  
-Optional; falls back to LLVM, but recommended for full features.
+Optional but recommended. Enables full cross-compilation via crosstool-ng.
 
-**How long to build toolchain?**  
-30-60 min, depending on hardware.
+**How long to build a toolchain?**  
+30–60 min, depending on hardware.
 
 ## Kernel Building
 
 **Which kernel versions?**  
-v6.18+ with patches for macOS.
+v6.18+ recommended. Earlier versions require additional patches.
 
 **Can I use custom configs?**  
-Yes, via menuconfig.
+Yes, via `elmos kernel config menuconfig`.
 
 ## Development
 
 **How to develop modules/apps?**  
-Use `./build/elmos module/app create`, then `make`.
+Use `./build/bin/elmos module create <name>` or `./build/bin/elmos app create <name>`, then build.
 
 **Cross-compilation?**  
-Automatic with detected toolchains.
+Automatic with detected toolchains from `elmos toolchains status`.
 
 ## QEMU
 
@@ -51,7 +51,7 @@ Automatic with detected toolchains.
 User-mode; host at 10.0.2.2.
 
 **Debugging?**  
-Use `./build/elmos qemu debug` with GDB.
+Use `./build/bin/elmos qemu debug` with GDB.
 
 ## Contributing
 

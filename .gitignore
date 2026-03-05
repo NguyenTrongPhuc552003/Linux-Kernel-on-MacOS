@@ -1,13 +1,16 @@
 # MacOS
 .DS_Store
 
-# Core Build
+# C++ Build
 /build/
+/build-release/
+/out/
+CMakeUserPresets.json
+compile_commands.json
 *.log
 
-# Workspace & Data
-/data/
-*.sparseimage
+# vcpkg
+/vcpkg_installed/
 
 # Kernel Build Artifacts
 *.ko

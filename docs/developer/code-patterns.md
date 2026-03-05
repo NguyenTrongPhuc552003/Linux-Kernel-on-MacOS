@@ -1,56 +1,54 @@
 # Code Patterns
 
-Go idioms and patterns used throughout ELMOS.
+C++23 idioms and patterns used throughout ELMOS.
 
 ---
 
 ## Dependency Injection
 
-ELMOS uses constructor injection for all domain services. The `App` struct wires everything:
+ELMOS uses pointer-based constructor injection. The `App` class owns all services and passes raw pointers:
 
-```go
-// core/app/app.go
-func New(exec executor.Executor, fs filesystem.FileSystem, cfg *config.Config) *App {
-    ctx := elcontext.New(cfg, exec, fs)
-    printer := ui.NewPrinter()
-    tm := toolchain.NewManager(exec, fs, cfg, printer)
-
-    return &App{
-        Exec:          exec,
-        FS:            fs,
-        Config:        cfg,
-        Context:       ctx,
-        KernelBuilder: builder.NewKernelBuilder(exec, fs, cfg, ctx, tm),
-        ModuleBuilder: builder.NewModuleBuilder(exec, fs, cfg, ctx, tm),
-        QEMURunner:    emulator.NewQEMURunner(exec, fs, cfg, ctx),
-        // ...
-    }
+```cpp
+// src/app/app.cpp
+App::App() {
+    exec_ = std::make_unique<infra::executor::ShellExecutor>();
+    fs_ = std::make_unique<infra::filesystem::OSFileSystem>();
+    platform_ = infra::platform::create_platform();
+    config_ = std::make_unique<config::Config>();
+    context_ = std::make_unique<context::Context>(config_.get(), exec_.get(), fs_.get());
+    toolchain_manager_ = std::make_unique<toolchain::Manager>(exec_.get(), fs_.get(), config_.get());
+    kernel_builder_ = std::make_unique<KernelBuilder>(context_.get(), toolchain_manager_.get());
+    // ...
 }
 ```
 
 **Benefits:**
 
-- Testable - inject mocks
-- Explicit dependencies
-- No global state
+- Testable — inject mock implementations
+- Explicit dependencies — no hidden coupling
+- No global state — everything flows through constructors
+- Clear ownership — `App` owns via `unique_ptr`, services borrow via raw pointer
 
 ---
 
-## Interface Abstraction
+## Abstract Base Classes
 
-Domain defines interfaces, infra implements:
+Domain defines abstract interfaces, infra implements:
 
-```go
+```cpp
 // Domain expects:
-type Executor interface {
-    Run(ctx context.Context, name string, args ...string) error
-    RunWithEnv(ctx context.Context, env []string, name string, args ...string) error
-    Output(ctx context.Context, name string, args ...string) ([]byte, error)
-}
+class Executor {
+public:
+    virtual ~Executor() = default;
+    virtual auto run(std::stop_token token, const std::string& cmd,
+                     const std::vector<std::string>& args) -> VoidResult = 0;
+    virtual auto output(std::stop_token token, const std::string& cmd,
+                        const std::vector<std::string>& args) -> Result<std::string> = 0;
+};
 
 // Infra provides:
-type ShellExecutor struct{}  // Real implementation
-type MockExecutor struct{}   // Test mock
+class ShellExecutor : public Executor { /* real implementation */ };
+class MockExecutor : public Executor  { /* test mock */ };
 ```
 
 This allows unit testing domain logic without real shell commands.
@@ -59,65 +57,60 @@ This allows unit testing domain logic without real shell commands.
 
 ## Error Handling
 
-### Custom Error Types
+### Result Types (std::expected)
 
-```go
-// core/context/errors.go
-type contextError struct {
-    code    string
-    message string
-    cause   error
-}
-
-func (e *contextError) Error() string { return e.message }
-func (e *contextError) Unwrap() error { return e.cause }
+```cpp
+// include/elmos/common.hpp
+using VoidResult = std::expected<void, Error>;
+template<typename T> using Result = std::expected<T, Error>;
 ```
 
-### Error Constructors
+### Error Construction
 
-```go
-func ImageError(msg string, cause error) error {
-    return &contextError{code: "IMAGE", message: msg, cause: cause}
+```cpp
+// Returning errors
+return std::unexpected(Error::generic("failed to build kernel"));
+return std::unexpected(Error(ErrorCode::Dependency, "cmake not found"));
+
+// Checking results
+if (auto r = build(token, opts); !r) {
+    printer.error("Build failed: {}", r.error().message());
+    return;
 }
 
-func ConfigError(msg string, cause error) error {
-    return &contextError{code: "CONFIG", message: msg, cause: cause}
-}
+// Accessing values
+auto result = get_modules();
+if (!result) { /* handle */ }
+auto& modules = *result;
 ```
 
-### Usage
-
-```go
-if !ctx.IsMounted() {
-    return ImageError("kernel volume not mounted", ErrNotMounted)
-}
-```
+**Rule:** Never throw exceptions in domain/infra code. Use `Result<T>` / `VoidResult` consistently.
 
 ---
 
 ## Configuration Pattern
 
-### Struct with Tags
+### YAML-backed Structs
 
-```go
-// core/config/types.go
-type Config struct {
-    Image  ImageConfig  `mapstructure:"image"`
-    Build  BuildConfig  `mapstructure:"build"`
-    QEMU   QEMUConfig   `mapstructure:"qemu"`
-    Paths  PathsConfig  `mapstructure:"paths"`
-}
+```cpp
+// src/config/types.hpp
+struct Config {
+    ImageConfig image;
+    BuildConfig build;
+    QEMUConfig qemu;
+    PathsConfig paths;
+};
 ```
 
 ### Computed Defaults
 
-```go
-// core/config/loader.go
-func applyComputedDefaults(cfg *Config) {
-    if cfg.Paths.ProjectRoot == "" {
-        cfg.Paths.ProjectRoot, _ = os.Getwd()
+```cpp
+// src/config/loader.cpp
+void apply_defaults(Config& cfg) {
+    if (cfg.paths.project_root.empty()) {
+        cfg.paths.project_root = std::filesystem::current_path().string();
     }
-    // Derive other paths from ProjectRoot...
+    // Derive other paths from project_root...
 }
 ```
 
@@ -125,19 +118,17 @@ func applyComputedDefaults(cfg *Config) {
 
 ## Embedded Assets
 
-Templates embedded at compile time:
+Templates embedded at compile-time via CMake's `EmbedResources.cmake`:
 
-```go
-// assets/embed.go
-//go:embed templates/*
-var Templates embed.FS
-
-func GetModuleTemplate() ([]byte, error) {
-    return Templates.ReadFile("templates/module/module.c.tmpl")
-}
+```cmake
+# cmake/EmbedResources.cmake
+elmos_embed_resources(elmos_resources
+    SOURCES assets/templates/module/module.c.tmpl
+            assets/templates/app/main.c.tmpl
+)
 ```
 
-Used for scaffolding new modules/apps.
+Used for scaffolding new modules and apps.
 
 ---
 
@@ -145,34 +136,32 @@ Used for scaffolding new modules/apps.
 
 ### Grouped Commands
 
-```go
-// core/app/commands/register.go
-func Register(ctx *Context, root *cobra.Command) {
-    // Core commands
-    root.AddCommand(BuildInit(ctx))
-    root.AddCommand(BuildDoctor(ctx))
-    
-    // Build commands
-    root.AddCommand(BuildKernel(ctx))
-    root.AddCommand(BuildModule(ctx))
-    
-    // Runtime commands
-    root.AddCommand(BuildQEMU(ctx))
-}
+```cpp
+// src/app/commands/commands.hpp
+void register_kernel(App& app, CLI::App& cli);
+void register_qemu(App& app, CLI::App& cli);
+void register_toolchain(App& app, CLI::App& cli);
+// ...
+
+void register_all(App& app, CLI::App& cli);
 ```
 
-### Command Context
+### Command Implementation
 
-All commands share a context:
+```cpp
+// src/app/commands/kernel.cpp
+void register_kernel(App& app, CLI::App& cli) {
+    auto* kernel = cli.add_subcommand("kernel", "Kernel commands");
 
-```go
-type Context struct {
-    Exec          executor.Executor
-    FS            filesystem.FileSystem
-    Config        *config.Config
-    KernelBuilder *builder.KernelBuilder
-    Printer       *ui.Printer
-    // ...
+    auto* build_cmd = kernel->add_subcommand("build", "Build kernel");
+    build_cmd->callback([&app] {
+        std::stop_source ss;
+        if (auto r = app.kernel_builder().build(ss.get_token(), {}); !r) {
+            app.printer().error("Build failed: {}", r.error().message());
+            return;
+        }
+        app.printer().success("Build complete!");
+    });
 }
 ```
 
@@ -180,64 +169,66 @@ type Context struct {
 
 ## Printer Pattern
 
-Styled output with verbosity control:
+Styled output with std::format:
 
-```go
-// core/ui/printer.go
-type Printer struct{}
-
-func (p *Printer) Step(format string, args ...interface{})    // → prefix
-func (p *Printer) Success(format string, args ...interface{}) // ✓ prefix
-func (p *Printer) Error(format string, args ...interface{})   // ✗ prefix
-func (p *Printer) Info(format string, args ...interface{})    // ℹ prefix
-func (p *Printer) Warn(format string, args ...interface{})    // ⚠ prefix
+```cpp
+// src/ui/printer.hpp
+class Printer {
+public:
+    void step(std::format_string<Args...> fmt, Args&&... args);    // → prefix
+    void success(std::format_string<Args...> fmt, Args&&... args); // ✓ prefix
+    void error(std::format_string<Args...> fmt, Args&&... args);   // ✗ prefix
+    void info(std::format_string<Args...> fmt, Args&&... args);    // ℹ prefix
+    void warn(std::format_string<Args...> fmt, Args&&... args);    // ⚠ prefix
+};
 ```
 
 ---
 
-## Testing Patterns
+## Cooperative Cancellation
 
-### Table-Driven Tests
+All long-running operations take `std::stop_token`:
 
-```go
-func TestValidateMachine(t *testing.T) {
-    tests := []struct {
-        name    string
-        machine string
-        want    bool
-    }{
-        {"valid", "virt", true},
-        {"invalid", "nonexistent", false},
-    }
-    
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            // ...
-        })
-    }
-}
+```cpp
+auto build(std::stop_token token, BuildOptions opts) -> VoidResult;
+
+// At the command handler level:
+std::stop_source ss;
+auto result = builder.build(ss.get_token(), opts);
 ```
 
-### Mock Executor
+---
 
-```go
-type MockExecutor struct {
-    outputs map[string][]byte
+## Plugin Hooks
+
+Lifecycle events with priority ordering:
+
+```cpp
+// src/plugin/interface.hpp
+namespace events {
+    constexpr auto kPreKernelBuild = "pre_kernel_build";
+    constexpr auto kPostKernelBuild = "post_kernel_build";
+    // ... 13 events total
 }
 
-func (m *MockExecutor) Output(ctx context.Context, name string, args ...string) ([]byte, error) {
-    return m.outputs[name], nil
-}
+// Hook priority: higher number runs first (range 0-10)
+struct HookRegistration {
+    std::string event;
+    int priority;
+    HookFn handler;
+};
 ```
 
 ---
 
 ## Naming Conventions
 
-| Type        | Convention | Example                           |
-| ----------- | ---------- | --------------------------------- |
-| Interface   | Noun       | `Executor`, `FileSystem`          |
-| Struct      | Noun       | `KernelBuilder`, `QEMURunner`     |
-| Constructor | `New*`     | `NewKernelBuilder()`              |
-| Method      | Verb       | `Build()`, `Run()`, `Configure()` |
-| Error       | `*Error`   | `ImageError()`, `ConfigError()`   |
+| Type         | Convention     | Example                             |
+| ------------ | -------------- | ----------------------------------- |
+| Class        | PascalCase     | `KernelBuilder`, `QEMURunner`       |
+| Method       | snake_case     | `build()`, `run()`, `configure()`   |
+| Member var   | trailing `_`   | `ctx_`, `exec_`, `config_`          |
+| Namespace    | snake_case     | `elmos::domain::builder`            |
+| Header guard | `#pragma once` | (no traditional guards)             |
+| Error        | `Error::*`     | `Error::generic("msg")`             |
+| Result       | `Result<T>`    | `Result<std::string>`, `VoidResult` |

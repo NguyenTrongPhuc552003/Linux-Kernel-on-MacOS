@@ -1,25 +1,20 @@
-# ELMOS - Embedded Linux on MacOS
-# Taskfile for building and installing the elmos CLI
+# ELMOS - Embedded Linux SDK (C++23)
+# Taskfile for building the elmos CLI
 # https://taskfile.dev
 
 version: '3'
 
 vars:
   BUILD_DIR: build
-  BINARY: "{{.BUILD_DIR}}/elmos"
+  BINARY: "{{.BUILD_DIR}}/bin/elmos"
   PREFIX: /usr/local
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
   COMMIT:
     sh: git rev-parse --short HEAD 2>/dev/null || echo "unknown"
-  DATE:
-    sh: date -u +"%Y-%m-%dT%H:%M:%SZ"
-  LDFLAGS: >-
-    -X github.com/NguyenTrongPhuc552003/elmos/core/app/version.Version={{.VERSION}}
-    -X github.com/NguyenTrongPhuc552003/elmos/core/app/version.Commit={{.COMMIT}}
-    -X github.com/NguyenTrongPhuc552003/elmos/core/app/version.BuildDate={{.DATE}}
-  GOBIN:
-    sh: go env GOPATH 2>/dev/null || echo "$HOME/go"
+  CMAKE_PRESET: default
+  SRC_DIRS: src include
+  SRC_EXTENSIONS: "cpp,hpp,h,cc,cxx"
 
 tasks:
   # ============================================================================
@@ -31,16 +26,24 @@ tasks:
     cmds:
       - task: build
 
+  configure:
+    desc: Configure CMake build (runs vcpkg install)
+    cmds:
+      - cmake --preset {{.CMAKE_PRESET}}
+    status:
+      - test -f {{.BUILD_DIR}}/CMakeCache.txt
+
   build:
     desc: Build the elmos binary
+    deps: [configure]
     cmds:
-      - echo "Building {{.BINARY}}..."
-      - mkdir -p {{.BUILD_DIR}}
-      - go build -ldflags "{{.LDFLAGS}}" -o {{.BINARY}} ./cmd/elmos
+      - cmake --build {{.BUILD_DIR}} --parallel
     sources:
-      - "**/*.go"
-      - go.mod
-      - go.sum
+      - "src/**/*.cpp"
+      - "src/**/*.hpp"
+      - "include/**/*.hpp"
+      - "CMakeLists.txt"
+      - "src/**/CMakeLists.txt"
     generates:
       - "{{.BINARY}}"
 
@@ -48,153 +51,205 @@ tasks:
     desc: Clean all build artifacts
     cmds:
       - rm -rf {{.BUILD_DIR}}
-      - rm -rf completions
-      - rm -f coverage.out coverage.html
-      - go clean
+
+  rebuild:
+    desc: Full clean rebuild from scratch
+    cmds:
+      - task: clean
+      - task: build
 
   # ============================================================================
   # Development Workflow (dev:*)
   # ============================================================================
 
-  dev:deps:
-    desc: Download and tidy dependencies
-    cmds:
-      - go mod download
-      - go mod tidy
-
-  dev:fmt:
-    desc: Format Go code
-    cmds:
-      - go fmt ./...
-
-  dev:lint:
-    desc: Run linter (golangci-lint or go vet)
-    cmds:
-      - |
-        if command -v golangci-lint >/dev/null 2>&1; then
-          golangci-lint run
-        else
-          echo "golangci-lint not installed, running go vet..."
-          go vet ./...
-        fi
-
   dev:check:
-    desc: Run fmt, lint, and test (pre-commit style)
+    desc: Pre-commit quality gate (format check + build + test)
     cmds:
-      - task: dev:fmt
-      - task: dev:lint
-
-  dev:complexity:install:
-    desc: Install go-complexity-analysis tool for CC/MI analysis
-    cmds:
-      - echo "Installing go-complexity-analysis..."
-      - go install github.com/firepear/go-complexity-analysis/cmd/complexity@latest
-      - echo "Installed to $(go env GOPATH)/bin/complexity"
-
-  dev:complexity:
-    desc: Run cyclomatic complexity analysis (CC>10, MI<30)
-    vars:
-      CC_THRESHOLD: '{{.CC_THRESHOLD | default "10"}}'
-      MI_THRESHOLD: '{{.MI_THRESHOLD | default "30"}}'
-    cmds:
-      - |
-        if [ ! -f "$(go env GOPATH)/bin/complexity" ]; then
-          echo "Error: complexity tool not installed. Run 'task dev:complexity:install' first."
-          exit 1
-        fi
-        echo "Running complexity analysis (CC>{{.CC_THRESHOLD}}, MI<{{.MI_THRESHOLD}})..."
-        go vet -vettool=$(go env GOPATH)/bin/complexity --cycloover {{.CC_THRESHOLD}} --maintunder {{.MI_THRESHOLD}} ./... 2>&1 | grep -v "undefined" || echo "✓ No complexity warnings!"
+      - task: fmt:check
+      - task: build
+      - task: test
+    silent: false
 
   dev:setup:
-    desc: Full dev setup (deps + build + init workspace + tools)
+    desc: Full developer environment bootstrap
     cmds:
       - task: dev:deps
-      - task: dev:complexity:install
+      - task: clean
+      - task: configure
       - task: build
-      - task: elmos:init
+      - task: test
+      - echo "✓ Dev environment ready — binary at {{.BINARY}}"
+
+  dev:deps:
+    desc: Verify and report required development dependencies
+    cmds:
+      - |
+        ok=1
+        for cmd in cmake make git python3; do
+          if command -v "$cmd" >/dev/null 2>&1; then
+            printf "  ✓ %-16s %s\n" "$cmd" "$(command -v "$cmd")"
+          else
+            printf "  ✗ %-16s MISSING\n" "$cmd"
+            ok=0
+          fi
+        done
+        if command -v clang-format >/dev/null 2>&1; then
+          printf "  ✓ %-16s %s\n" "clang-format" "$(clang-format --version | head -1)"
+        else
+          printf "  ⚠ %-16s optional (install for fmt commands)\n" "clang-format"
+        fi
+        [ "$ok" -eq 1 ] || { echo "Error: missing required dependencies"; exit 1; }
+
+  dev:watch:
+    desc: Rebuild on source changes (requires fswatch or entr)
+    cmds:
+      - |
+        if command -v fswatch >/dev/null 2>&1; then
+          echo "Watching src/ and include/ for changes..."
+          fswatch -o src/ include/ CMakeLists.txt | while read -r _; do
+            echo "--- Rebuilding ---"
+            cmake --build {{.BUILD_DIR}} --parallel 2>&1 || true
+          done
+        elif command -v entr >/dev/null 2>&1; then
+          echo "Watching src/ and include/ for changes..."
+          find src include -name '*.cpp' -o -name '*.hpp' | entr -c cmake --build {{.BUILD_DIR}} --parallel
+        else
+          echo "Error: install fswatch (brew install fswatch) or entr for file watching"
+          exit 1
+        fi
+
+  # ============================================================================
+  # Formatting & Linting (fmt:*)
+  # ============================================================================
+
+  fmt:
+    desc: Format all C++ source files in-place
+    preconditions:
+      - sh: command -v clang-format
+        msg: "clang-format not found — install via: brew install clang-format"
+    cmds:
+      - |
+        find {{.SRC_DIRS}} -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) \
+          -exec clang-format -i {} +
+        echo "✓ Formatted all C++ sources"
+
+  fmt:check:
+    desc: Verify formatting without modifying files (CI-safe)
+    preconditions:
+      - sh: command -v clang-format
+        msg: "clang-format not found — install via: brew install clang-format"
+    cmds:
+      - |
+        bad=$(find {{.SRC_DIRS}} -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) \
+          -exec clang-format --dry-run --Werror {} + 2>&1 || true)
+        if [ -n "$bad" ]; then
+          echo "✗ Formatting violations found:"
+          echo "$bad"
+          echo ""
+          echo "Run 'task fmt' to auto-fix."
+          exit 1
+        fi
+        echo "✓ All files correctly formatted"
+
+  fmt:diff:
+    desc: Show formatting diff without applying changes
+    preconditions:
+      - sh: command -v clang-format
+        msg: "clang-format not found — install via: brew install clang-format"
+    cmds:
+      - |
+        find {{.SRC_DIRS}} -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) \
+          -exec clang-format --dry-run {} + 2>&1 | head -200
 
   # ============================================================================
   # Installation (install:*)
   # ============================================================================
 
   install:
-    desc: Install to GOPATH/bin
+    desc: Install to /usr/local/bin
     deps: [build]
     cmds:
-      - echo "Installing to {{.GOBIN}}/bin..."
-      - mkdir -p {{.GOBIN}}/bin
-      - cp {{.BINARY}} {{.GOBIN}}/bin/
-
-  install:global:
-    desc: Install to /usr/local/bin (requires sudo)
-    deps: [build]
-    cmds:
-      - echo "Installing to {{.PREFIX}}/bin..."
-      - sudo cp {{.BINARY}} {{.PREFIX}}/bin/
+      - cmake --install {{.BUILD_DIR}} --prefix {{.PREFIX}}
 
   uninstall:
-    desc: Remove from GOPATH/bin
+    desc: Remove elmos from /usr/local/bin
     cmds:
-      - rm -f {{.GOBIN}}/bin/elmos
+      - rm -f {{.PREFIX}}/bin/elmos
+
+  # ============================================================================
+  # Testing (test:*)
+  # ============================================================================
+
+  test:
+    desc: Run all tests
+    deps: [build]
+    cmds:
+      - cmake --build {{.BUILD_DIR}} --target test
+
+  test:verbose:
+    desc: Run tests with verbose output
+    deps: [build]
+    cmds:
+      - cd {{.BUILD_DIR}} && ctest --output-on-failure --verbose
+
+  # ============================================================================
+  # ELMOS CLI Wrappers (elmos:*)
+  # ============================================================================
+
+  elmos:doctor:
+    desc: Run elmos doctor
+    deps: [build]
+    cmds:
+      - "{{.BINARY}} doctor"
+
+  elmos:status:
+    desc: Show workspace status
+    deps: [build]
+    cmds:
+      - "{{.BINARY}} status"
+
+  elmos:version:
+    desc: Show version info
+    deps: [build]
+    cmds:
+      - "{{.BINARY}} version"
 
   # ============================================================================
   # Release (release:*)
   # ============================================================================
 
-  release:darwin:
-    desc: Build for macOS platforms (arm64 + amd64)
+  release:
+    desc: Build Release configuration
     cmds:
-      - mkdir -p {{.BUILD_DIR}}
-      - echo "Building for darwin/arm64..."
-      - GOOS=darwin GOARCH=arm64 go build -ldflags "{{.LDFLAGS}}" -o {{.BINARY}}-darwin-arm64 .
-      - echo "Building for darwin/amd64..."
-      - GOOS=darwin GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o {{.BINARY}}-darwin-amd64 .
+      - cmake --preset release
+      - cmake --build build-release --parallel
 
-  release:completions:
-    desc: Generate shell completions
-    deps: [build]
-    cmds:
-      - mkdir -p completions
-      - ./{{.BINARY}} completion bash > completions/elmos.bash
-      - ./{{.BINARY}} completion zsh > completions/_elmos
-      - ./{{.BINARY}} completion fish > completions/elmos.fish
-      - 'echo "Completions generated in completions/"'
+  # ============================================================================
+  # Source Analysis (info:*)
+  # ============================================================================
 
-  release:all:
-    desc: Full release (all platforms + completions)
-    cmds:
-      - task: release:darwin
-      - task: release:completions
-
-  release:homebrew:
-    desc: Generate Homebrew formula
+  info:loc:
+    desc: Count lines of C++ source code
     cmds:
       - |
-        cat <<EOF
-        class Elmos < Formula
-          desc "Embedded Linux development on macOS - native kernel builds"
-          homepage "https://github.com/NguyenTrongPhuc552003/elmos"
-          version "{{.VERSION}}"
-          license "MIT"
+        echo "=== ELMOS Source Line Counts ==="
+        for dir in src include tests; do
+          if [ -d "$dir" ]; then
+            count=$(find "$dir" -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) \
+              -exec cat {} + 2>/dev/null | wc -l | tr -d ' ')
+            printf "  %-12s %s lines\n" "$dir/" "$count"
+          fi
+        done
+        total=$(find src include tests -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) \
+          -exec cat {} + 2>/dev/null | wc -l | tr -d ' ')
+        echo "  ──────────────────────"
+        printf "  %-12s %s lines\n" "total" "$total"
 
-          depends_on "llvm"
-          depends_on "lld"
-          depends_on "gnu-sed"
-          depends_on "make"
-          depends_on "libelf"
-          depends_on "qemu"
-          depends_on "e2fsprogs"
-          depends_on "coreutils"
-
-          def install
-            bin.install "elmos"
-          end
-
-          test do
-            system "\#{bin}/elmos", "version"
-          end
-        end
-        EOF
+  info:targets:
+    desc: List all CMake build targets
+    deps: [configure]
+    cmds:
+      - cmake --build {{.BUILD_DIR}} --target help 2>/dev/null || echo "(target listing not supported)"
 
   # ============================================================================
   # Documentation (docs:*)
@@ -203,16 +258,16 @@ tasks:
     desc: Build the documentation site
     deps: [docs:install]
     cmds:
-      - python3 -m mkdocs build
+      - NO_MKDOCS_2_WARNING=1 python3 -m mkdocs build
 
   docs:install:
     desc: Install documentation dependencies if missing
     internal: true
     cmds:
-      - python3 -m pip install mkdocs-material "mkdocstrings[python]" mkdocs_puml --break-system-packages
+      - python3 -m pip install --upgrade "mkdocs>=1.6,<2" "mkdocs-material>=9,<10" "mkdocstrings[python]" mkdocs_puml --break-system-packages
     status:
-      # Only run if all packages are found in the python environment
-      - python3 -c "import material, mkdocstrings, mkdocs_puml" 2>/dev/null
+      # Only run if required packages are found and MkDocs major version is < 2
+      - python3 -c "import mkdocs, material, mkdocstrings, mkdocs_puml; import sys; sys.exit(0 if int(mkdocs.__version__.split('.', 1)[0]) < 2 else 1)" 2>/dev/null
 
   docs:clean:
     desc: Remove generated documentation build files
@@ -220,7 +275,7 @@ tasks:
       - rm -rf build/site/
 
   docs:serve:
-    desc: Serve the documentation site locally and open in browser
+    desc: Serve the documentation site locally
     deps: [docs]
     cmds:
-      - python3 -m mkdocs serve --open
+      - NO_MKDOCS_2_WARNING=1 python3 -m mkdocs serve

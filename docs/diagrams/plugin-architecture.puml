@@ -1,0 +1,150 @@
+@startuml plugin-architecture
+!theme plain
+skinparam linetype ortho
+skinparam componentStyle rectangle
+
+title ELMOS Plugin Architecture — Hook-Based Extension System
+
+package "Plugin Public API" {
+    interface "Plugin\nInterface" as PluginAPI {
+        + name(): string
+        + version(): string
+        + description(): string
+        + init(context, config)
+        + validate()
+        + cleanup()
+        + hooks(): vector<HookRegistration>
+    }
+    
+    interface "Hook\nRegistration" as HookReg {
+        + event: string
+        + priority: int
+        + handler: function
+    }
+}
+
+package "Plugin Lifecycle Management" {
+    component [Loader &\nRegistry] as PluginRegistry
+    component [Factory\nMap] as FactoryMap
+    component [Config\nResolver] as PluginConfig
+}
+
+package "Hook Execution Engine" {
+    component [Hook\nExecutor] as HookExecutor
+    component [Priority\nScheduler] as PriorityScheduler
+    component [Error\nRecovery] as ErrorRecovery
+}
+
+package "Builtin Plugins" {
+    component [Kernel Builder\nPlugin] as KernelPlugin
+    component [Rootfs\nPlugin] as RootfsPlugin
+    component [BSP Cache\nPlugin] as BSPPlugin
+    component [CI/CD\nPlugin] as CIPlugin
+    component [Metrics\nPlugin] as MetricsPlugin
+}
+
+package "Integration Points — Hook Events" {
+    component [Pre/Post\nKernel Build] as KernelHooks
+    component [Pre/Post\nBootloader] as BootHooks
+    component [Config\nLoaded] as ConfigHooks
+    component [Pre/Post\nRootfs] as RootfsHooks
+    component [Pre/Post\nImage] as ImageHooks
+    component [Pre/Post\nQEMU] as QEMUHooks
+    component [Build\nError] as ErrorHooks
+    component [Cleanup] as CleanupHooks
+}
+
+package "Application Layer" {
+    component [App\nContainer] as AppContainer
+    component [Build\nOrchestrator] as Orchestrator
+}
+
+' API implementations
+PluginAPI <|-- KernelPlugin : implements
+PluginAPI <|-- RootfsPlugin : implements
+PluginAPI <|-- BSPPlugin : implements
+PluginAPI <|-- CIPlugin : implements
+PluginAPI <|-- MetricsPlugin : implements
+
+HookReg -- PluginAPI : returns
+
+' Plugin registry
+KernelPlugin --> PluginRegistry : registers at init
+RootfsPlugin --> PluginRegistry : registers at init
+BSPPlugin --> PluginRegistry : registers at init
+CIPlugin --> PluginRegistry : registers at init
+MetricsPlugin --> PluginRegistry : registers at init
+
+PluginRegistry --> FactoryMap : loads factories
+FactoryMap --> PluginConfig : provides config
+
+' Hook execution
+PluginRegistry --> HookExecutor : discovered plugins
+HookExecutor --> PriorityScheduler : schedules execution
+PriorityScheduler --> ErrorRecovery : handles failures
+ErrorRecovery --> HookExecutor : recovers state
+
+' Hook registration
+KernelPlugin --> KernelHooks : registers hooks
+RootfsPlugin --> RootfsHooks : registers hooks
+BSPPlugin --> BSPPlugin : hooks for cache
+CIPlugin --> ConfigHooks : after config
+CIPlugin --> ErrorHooks : on build error
+MetricsPlugin --> KernelHooks : collects metrics
+MetricsPlugin --> RootfsHooks : collects metrics
+
+' Hook invocation from app
+AppContainer --> HookExecutor : triggers hooks
+Orchestrator --> KernelHooks : fires kernel events
+Orchestrator --> RootfsHooks : fires rootfs events
+Orchestrator --> ImageHooks : fires image events
+Orchestrator --> QEMUHooks : fires qemu events
+Orchestrator --> ErrorHooks : fires on error
+Orchestrator --> CleanupHooks : cleanup phase
+
+' Hook event chains
+KernelHooks --> KernelPlugin : kernel plugin executes
+RootfsHooks --> RootfsPlugin : rootfs plugin executes
+ImageHooks --> BSPPlugin : bsp plugin executes
+ConfigHooks --> CIPlugin : ci plugin executes
+KernelHooks --> MetricsPlugin : metrics plugin executes
+RootfsHooks --> MetricsPlugin : metrics plugin executes
+ErrorHooks --> MetricsPlugin : error metrics
+CleanupHooks --> MetricsPlugin : cleanup metrics
+
+note right of PluginAPI
+  Abstract interface defining
+  plugin contract. All plugins
+  must implement this interface.
+end note
+
+note right of FactoryMap
+  Static factory map populated
+  at program initialization
+  via static registration pattern
+end note
+
+note right of PriorityScheduler
+  Hooks execute in priority order
+  (higher number = runs first).
+  Range: 0-10. Use 8+ for validation.
+end note
+
+note right of KernelHooks
+  Fires before/after kernel
+  compilation to enable
+  custom kernel patches
+end note
+
+note right of ErrorHooks
+  Fires when any build error
+  occurs. Plugins can log,
+  alert, or trigger cleanup.
+end note
+
+note bottom of ErrorRecovery
+  Non-fatal plugin errors
+  don't fail entire build.
+  Errors are logged and
+  execution continues.
+end note

@@ -7,7 +7,7 @@ Develop kernel modules and userspace applications with ELMOS.
 ### Create Module
 
 ```bash
-./build/elmos module create <name>
+./build/bin/elmos module create <name>
 ```
 
 Generates template in `examples/modules/<name>/` with `Makefile` and `<name>.c`.
@@ -15,8 +15,13 @@ Generates template in `examples/modules/<name>/` with `Makefile` and `<name>.c`.
 ### Build Module
 
 ```bash
-cd examples/modules/<name>
-make  # Uses detected toolchain
+./build/bin/elmos module build <name>
+```
+
+Or build all modules:
+
+```bash
+./build/bin/elmos module build
 ```
 
 Outputs `.ko` file.
@@ -55,7 +60,7 @@ dmesg | tail
 ### Create App
 
 ```bash
-./build/elmos app create <name>
+./build/bin/elmos app create <name>
 ```
 
 Generates template in `examples/apps/<name>/` with `Makefile` and `<name>.c`.
@@ -63,11 +68,16 @@ Generates template in `examples/apps/<name>/` with `Makefile` and `<name>.c`.
 ### Build App
 
 ```bash
-cd examples/apps/<name>
-make  # Cross-compiles for target
+./build/bin/elmos app build <name>
 ```
 
-Outputs executable.
+Or build all apps:
+
+```bash
+./build/bin/elmos app build
+```
+
+Outputs cross-compiled executable.
 
 ### Example Template
 
@@ -82,21 +92,16 @@ int main() {
 
 ### Run in QEMU
 
-Copy to rootfs and execute:
+Boot with QEMU and execute in the guest:
 
 ```bash
-# In host
-cp examples/apps/<name>/<name> build/rootfs/
-
-# In QEMU
 ./<name>
 ```
 
 ## Cross-Compilation
 
-- Auto-detects toolchain based on `./build/elmos arch`
-- Sets `CROSS_COMPILE` and `PATH`
-- Falls back to LLVM if no toolchain
+- Auto-detects toolchain based on `./build/bin/elmos arch`
+- Sets `CROSS_COMPILE` and `PATH` automatically
 
 ## Templates
 

@@ -1,0 +1,12 @@
+{
+    "$schema": "https://openapi.vercel.sh/vercel.json",
+    "name": "elmos",
+    "version": 2,
+    "framework": null,
+    "buildCommand": "pip install --upgrade 'mkdocs>=1.6,<2' 'mkdocs-material>=9,<10' mkdocs_puml && NO_MKDOCS_2_WARNING=1 mkdocs build",
+    "outputDirectory": "build/site",
+    "github": {
+        "enabled": true,
+        "autoAlias": true
+    }
+}

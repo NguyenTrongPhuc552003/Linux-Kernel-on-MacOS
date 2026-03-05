@@ -1,6 +1,6 @@
 # Embedded Assets
 
-ELMOS embeds templates and headers at compile time using Go's `embed` package.
+ELMOS embeds templates and headers at compile time using CMake's resource embedding.
 
 ---
 
@@ -8,12 +8,20 @@ ELMOS embeds templates and headers at compile time using Go's `embed` package.
 
 ```
 assets/
-├── embed.go              # Embed directives and accessor functions
-├── libraries/            # macOS compatibility headers
+├── embed.go              # Legacy Go wrapper (unused in C++ build)
+├── libraries/            # Compatibility headers
 │   ├── elf.h             # ELF definitions
 │   ├── byteswap.h        # Byte swapping macros
+│   ├── endian.h          # Endianness macros
 │   └── asm/
-│       └── bitsperlong.h # Architecture bit width
+│       ├── bitsperlong.h
+│       ├── int-ll64.h
+│       ├── posix_types.h
+│       └── types.h
+├── schemas/              # JSON schemas for validation
+│   ├── machine.schema.json
+│   ├── plugins.schema.json
+│   └── workspace.schema.json
 ├── templates/
 │   ├── app/              # Userspace app templates
 │   │   ├── main.c.tmpl
@@ -28,44 +36,35 @@ assets/
 │       └── Makefile.tmpl
 └── toolchains/
     └── configs/          # Crosstool-ng configurations
+        ├── aarch64-unknown-linux-gnu.config
+        ├── arm-cortex_a15-linux-gnueabihf.config
+        └── riscv64-unknown-linux-gnu.config
 ```
 
 ---
 
-## Embed Directives
+## CMake Resource Embedding
 
-```go
-// assets/embed.go
-package assets
+Templates are embedded at compile time via `cmake/EmbedResources.cmake`. This replaces Go's `//go:embed` directive.
 
-import "embed"
-
-//go:embed templates/*
-var Templates embed.FS
+```cmake
+# cmake/EmbedResources.cmake
+elmos_embed_resources(target
+    DIRECTORY assets/templates
+    NAMESPACE elmos::assets
+)
 ```
 
 ---
 
-## Accessor Functions
+## Template Engine
 
-| Function              | Returns                             |
-| --------------------- | ----------------------------------- |
-| `GetModuleTemplate()` | `templates/module/module.c.tmpl`    |
-| `GetModuleMakefile()` | `templates/module/Makefile.tmpl`    |
-| `GetAppTemplate()`    | `templates/app/main.c.tmpl`         |
-| `GetAppMakefile()`    | `templates/app/Makefile.tmpl`       |
-| `GetInitScript()`     | `templates/init/init.sh.tmpl`       |
-| `GetGuestSync()`      | `templates/init/guesync.sh.tmpl`    |
-| `GetConfigTemplate()` | `templates/configs/elmos.yaml.tmpl` |
+Templates use [inja](https://github.com/pantor/inja) (v3.4.0) syntax, fetched via FetchContent:
 
-**Usage:**
-
-```go
-tmpl, err := assets.GetModuleTemplate()
-if err != nil {
-    return err
-}
-// Use tmpl bytes...
+```
+{{ name }}           → Variable substitution
+{% if condition %}   → Conditional
+{% for item in list %} → Loop
 ```
 
 ---
@@ -80,14 +79,14 @@ if err != nil {
 #include <linux/kernel.h>
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("{{.Author}}");
-MODULE_DESCRIPTION("{{.Description}}");
+MODULE_AUTHOR("{{ author }}");
+MODULE_DESCRIPTION("{{ description }}");
 
-static int __init {{.Name}}_init(void) {
-    pr_info("{{.Name}}: loaded\n");
+static int __init {{ name }}_init(void) {
+    pr_info("{{ name }}: loaded\n");
     return 0;
 }
-module_init({{.Name}}_init);
+module_init({{ name }}_init);
 ```
 
 ### App Template
@@ -97,34 +96,38 @@ module_init({{.Name}}_init);
 #include <stdio.h>
 
 int main(void) {
-    printf("Hello from {{.Name}}!\n");
+    printf("Hello from {{ name }}!\n");
     return 0;
 }
 ```
 
 ---
 
-## macOS Compatibility Headers
+## Compatibility Headers
 
-The `assets/libraries/` directory contains headers missing on macOS:
+The `assets/libraries/` directory contains ELF and architecture headers used for kernel module building on platforms that lack them natively.
 
 | Header              | Purpose                |
 | ------------------- | ---------------------- |
 | `elf.h`             | ELF format definitions |
 | `byteswap.h`        | Byte swapping macros   |
+| `endian.h`          | Endianness detection   |
+| `asm/types.h`       | Linux type definitions |
 | `asm/bitsperlong.h` | Architecture bit width |
 
-These are included via `HOSTCFLAGS=-I<assets/libraries>`.
+---
+
+## JSON Schemas
+
+Validation schemas in `assets/schemas/` define the structure of:
+- `machine.schema.json` — Machine definition files
+- `plugins.schema.json` — Plugin configuration
+- `workspace.schema.json` — Workspace YAML
 
 ---
 
 ## Adding New Templates
 
 1. Create template in `assets/templates/<category>/`
-2. Add accessor function in `assets/embed.go`:
-   ```go
-   func GetNewTemplate() ([]byte, error) {
-       return Templates.ReadFile("templates/category/new.tmpl")
-   }
-   ```
-3. Rebuild: `task build`
+2. Use inja syntax (`{{ variable }}`) for substitution
+3. Rebuild: `cmake --build build --parallel`

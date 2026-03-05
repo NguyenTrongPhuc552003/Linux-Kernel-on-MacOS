@@ -5,7 +5,7 @@ ELMOS features an interactive Terminal User Interface (TUI) for streamlined work
 ## Launching TUI
 
 ```bash
-./build/elmos tui
+./build/bin/elmos tui
 ```
 
 ## Interface

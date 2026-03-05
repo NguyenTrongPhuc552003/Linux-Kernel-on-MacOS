@@ -1,0 +1,36 @@
+@startuml domain-classes-simple
+!theme plain
+
+title Domain Classes & Relationships
+
+package Config {
+    class Architecture
+    class Machine
+    class Configuration
+}
+
+package Builder {
+    class KernelBuilder
+    class ModuleBuilder
+    class AppBuilder
+}
+
+package Orchestrator {
+    class Pipeline
+    class Fingerprinter
+}
+
+package Infra {
+    class Executor
+    class FileSystem
+    class Platform
+}
+
+Configuration *-- Architecture
+Configuration *-- Machine
+KernelBuilder --> Architecture
+Pipeline --> KernelBuilder
+Pipeline --> Executor
+KernelBuilder --> FileSystem
+
+@enduml

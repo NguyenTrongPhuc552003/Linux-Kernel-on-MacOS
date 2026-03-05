@@ -1,6 +1,6 @@
 # Kernel Building
 
-Build Linux kernels for ARM64, ARM, and RISC-V on macOS.
+Build Linux kernels for ARM64, ARM, and RISC-V.
 
 ---
 
@@ -8,6 +8,7 @@ Build Linux kernels for ARM64, ARM, and RISC-V on macOS.
 
 - Workspace initialized: `elmos init`
 - Dependencies checked: `elmos doctor`
+- Architecture set: `elmos arch set arm64`
 
 ---
 
@@ -16,8 +17,8 @@ Build Linux kernels for ARM64, ARM, and RISC-V on macOS.
 ### 1. Set Architecture
 
 ```bash
-elmos arch arm64    # or: arm, riscv
-elmos arch          # Show current
+elmos arch set arm64    # or: arm, riscv
+elmos arch              # Show current
 ```
 
 ### 2. Configure Kernel
@@ -78,37 +79,34 @@ Output:
 
 ```
 Workspace Status:
-  Volume: /Volumes/elmos (mounted)
   Kernel: ✓ Configured, ✓ Built
   Architecture: arm64
-  Image: /Volumes/elmos/linux/arch/arm64/boot/Image
+  Image: linux/arch/arm64/boot/Image
 ```
 
 ---
 
-## BuildOptions Reference
+## BuildOptions (Developer Reference)
 
-```go
-// core/domain/builder/kernel.go
-type BuildOptions struct {
-    Jobs    int      // Parallel jobs (-j)
-    Targets []string // Build targets
-}
+```cpp
+// src/domain/builder/kernel.hpp
+struct BuildOptions {
+    int jobs = 0;                      // Parallel jobs (-j)
+    std::vector<std::string> targets;  // Build targets
+};
 ```
 
 ---
 
 ## Environment Variables
 
-ELMOS automatically sets:
+ELMOS automatically sets when building:
 
-| Variable        | Value                     |
-| --------------- | ------------------------- |
-| `ARCH`          | Target architecture       |
-| `LLVM`          | `1` (use LLVM toolchain)  |
-| `CROSS_COMPILE` | Toolchain prefix          |
-| `HOSTCFLAGS`    | macOS compatibility flags |
-| `PATH`          | Prepends LLVM, GNU tools  |
+| Variable        | Value                  |
+| --------------- | ---------------------- |
+| `ARCH`          | Target architecture    |
+| `CROSS_COMPILE` | Toolchain prefix       |
+| `PATH`          | Prepends toolchain bin |
 
 ---
 
@@ -122,7 +120,7 @@ elmos kernel clean    # make distclean
 
 ## Patches
 
-Apply macOS compatibility patches:
+Apply kernel patches:
 
 ```bash
 # List available
