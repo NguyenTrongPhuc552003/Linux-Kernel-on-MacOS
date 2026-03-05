@@ -34,7 +34,7 @@ func BuildStatus(ctx *Context) *cobra.Command {
 
 			// Platform-specific volume detail display.
 			if runtime.GOOS == "darwin" {
-				printDarwinVolumeInfo(ctx, cmd, mountPoint)
+				printDarwinVolumeInfo(ctx, cmd)
 			} else {
 				printLinuxVolumeInfo(ctx, cmd, mountPoint)
 			}
@@ -45,7 +45,7 @@ func BuildStatus(ctx *Context) *cobra.Command {
 }
 
 // printDarwinVolumeInfo displays hdiutil info filtered to our image (macOS).
-func printDarwinVolumeInfo(ctx *Context, cmd *cobra.Command, mountPoint string) {
+func printDarwinVolumeInfo(ctx *Context, cmd *cobra.Command) {
 	out, err := ctx.Exec.Output(cmd.Context(), "hdiutil", "info")
 	if err != nil {
 		ctx.Printer.Warn("hdiutil info failed: %v", err)
