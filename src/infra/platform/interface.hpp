@@ -48,6 +48,11 @@ public:
     virtual auto get_bin_path(const std::string& pkg) -> std::string = 0;
     virtual auto get_lib_path(const std::string& pkg) -> std::string = 0;
     virtual auto get_include_path(const std::string& pkg) -> std::string = 0;
+
+    /// Build environment variables with GNU tools in PATH for build commands.
+    /// On macOS, prepends Homebrew GNU tool paths. On Linux/WSL, returns empty
+    /// since GNU tools are the system default.
+    virtual auto build_gnu_environment() -> EnvList = 0;
 };
 
 /// PathProvider supplies OS-specific default path conventions.

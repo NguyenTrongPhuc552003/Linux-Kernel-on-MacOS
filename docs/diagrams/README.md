@@ -366,7 +366,7 @@ architecture.puml
 
 1. **Identify which diagram(s)** to update
 2. **Edit .puml file** in this directory
-3. **Test rendering:** Run `task docs:serve` locally
+3. **Test rendering:** Run `mkdocs serve` locally
 4. **Verify accuracy** in browser at http://127.0.0.1:8000/developer/architecture/
 5. **Commit changes** with diagram updates
 
@@ -402,7 +402,7 @@ end note
 
 Diagrams are automatically rendered by:
 - **MkDocs Material Plugin:** `mkdocs_puml`
-- **Build Command:** `task docs:serve`
+- **Build Command:** `mkdocs serve`
 - **Output:** Embedded SVGs in HTML documentation
 
 Cached diagrams in `~/.cache/mkdocs_puml/` for fast rebuilds.

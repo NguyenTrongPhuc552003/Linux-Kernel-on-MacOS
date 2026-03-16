@@ -2,8 +2,7 @@
 .DS_Store
 
 # C++ Build
-/build/
-/build-release/
+/build*/
 /out/
 CMakeUserPresets.json
 compile_commands.json

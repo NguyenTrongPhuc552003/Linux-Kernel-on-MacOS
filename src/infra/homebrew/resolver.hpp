@@ -25,6 +25,9 @@ public:
     auto get_lib(const std::string& pkg) -> std::string;
     auto get_libexec_bin(const std::string& pkg) -> std::string;
 
+    /// Build a complete environment with all GNU tools in PATH for build commands.
+    auto build_gnu_tools_env() -> EnvList;
+
     auto list_installed() -> Result<std::vector<std::string>>;
     auto list_taps() -> Result<std::vector<std::string>>;
     auto is_installed(const std::string& pkg) -> bool;

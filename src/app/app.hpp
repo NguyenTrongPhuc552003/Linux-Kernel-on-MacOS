@@ -57,6 +57,9 @@ public:
     auto toolchain_manager() -> domain::toolchain::Manager& { return *toolchain_manager_; }
     auto hook_executor() -> plugin::HookExecutor& { return *hook_executor_; }
     auto plugin_registry() -> plugin::Registry& { return *plugin_registry_; }
+    auto platform() -> infra::platform::Platform& { return *platform_; }
+
+    auto save_workspace_config() -> VoidResult;
 
 private:
     // Owned infrastructure
@@ -87,6 +90,7 @@ private:
     std::string config_file_;
 
     void register_commands();
+    void ensure_first_run_setup();
 };
 
 }  // namespace elmos::app

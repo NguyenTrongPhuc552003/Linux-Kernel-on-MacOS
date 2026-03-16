@@ -15,7 +15,7 @@ namespace elmos::app::commands {
 void register_all(App& app, CLI::App& cli);
 
 // Individual command builders
-void register_init(App& app, CLI::App& cli);
+void register_workspace(App& app, CLI::App& cli);
 void register_kernel(App& app, CLI::App& cli);
 void register_module(App& app, CLI::App& cli);
 void register_apps(App& app, CLI::App& cli);
@@ -26,10 +26,9 @@ void register_toolchain(App& app, CLI::App& cli);
 void register_rootfs(App& app, CLI::App& cli);
 void register_bootloader(App& app, CLI::App& cli);
 void register_patch(App& app, CLI::App& cli);
-void register_plugins(App& app, CLI::App& cli);
+void register_plugin(App& app, CLI::App& cli);
 void register_version(App& app, CLI::App& cli);
 void register_tui(App& app, CLI::App& cli);
-void register_status(App& app, CLI::App& cli);
 void register_bsp(App& app, CLI::App& cli);
 
 }  // namespace elmos::app::commands

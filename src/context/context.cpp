@@ -5,11 +5,13 @@
 #include "context.hpp"
 
 #include <config/arch.hpp>
+#include <config/workspaces.hpp>
 #include <infra/executor/env.hpp>
 
 #include <cstdlib>
 #include <filesystem>
 #include <sstream>
+#include <unordered_set>
 
 namespace elmos::context {
 
@@ -40,10 +42,23 @@ auto Context::is_mounted(std::stop_token token) -> bool {
 }
 
 auto Context::ensure_mounted(std::stop_token token) -> VoidResult {
-    if (!is_mounted(token)) {
-        return make_error(Error::image("kernel volume not mounted"));
+    if (is_mounted(token))
+        return {};
+
+    // Auto-mount: if the image file exists, mount it transparently
+    auto& img_path = config_->image.path;
+    if (!img_path.empty()) {
+        namespace fs = std::filesystem;
+        if (fs::exists(img_path)) {
+            auto result = platform_->disk_image().mount(token, img_path);
+            if (result) {
+                config_->image.mount_point = *result;
+                return {};
+            }
+        }
     }
-    return {};
+
+    return make_error(Error::image("workspace volume not mounted — run 'elmos init <name>'"));
 }
 
 auto Context::get_actual_mount_point(std::stop_token token) -> Result<std::string> {
@@ -121,12 +136,11 @@ auto Context::get_make_env() -> EnvList {
     env.push_back("LLVM=1");
     env.push_back("CROSS_COMPILE=" + cfg.build.cross_compile);
 
-    auto hostcflags = build_host_cflags();
-    if (!hostcflags.empty()) {
-        env.push_back("HOSTCFLAGS=" + hostcflags);
-    }
-
     return env;
+}
+
+auto Context::get_host_cflags() -> std::string {
+    return build_host_cflags();
 }
 
 auto Context::prepend_brew_tool_paths(const std::string& current_path) -> std::string {
@@ -161,15 +175,48 @@ auto Context::prepend_brew_tool_paths(const std::string& current_path) -> std::s
 }
 
 auto Context::build_host_cflags() -> std::string {
-#ifndef ELMOS_PLATFORM_DARWIN
-    if (!config_->paths.libraries_dir.empty()) {
-        return "-I" + config_->paths.libraries_dir;
+    std::vector<std::string> include_dirs;
+    std::unordered_set<std::string> seen;
+
+    auto add_include_dir = [&](const std::string& dir) {
+        if (dir.empty() || seen.contains(dir)) {
+            return;
+        }
+        if (std::filesystem::is_directory(dir)) {
+            include_dirs.push_back(dir);
+            seen.insert(dir);
+        }
+    };
+
+    // Configured workspace sysroot path.
+    add_include_dir(config_->paths.libraries_dir);
+
+    // Global shared sysroot fallback (~/.elmos/sysroot).
+    add_include_dir(config::WorkspaceManager::global_elmos_dir() + "/sysroot");
+
+    // Active workspace sysroot (~/.elmos/workspaces/<name>/sysroot).
+    auto active_ws = config::WorkspaceManager::get_active_workspace();
+    if (active_ws) {
+        add_include_dir(config::WorkspaceManager::workspace_dir(*active_ws) + "/sysroot");
     }
-    return "";
+
+#ifndef ELMOS_PLATFORM_DARWIN
+    if (include_dirs.empty()) {
+        return "";
+    }
+
+    std::string result;
+    for (size_t i = 0; i < include_dirs.size(); ++i) {
+        if (i > 0) {
+            result += " ";
+        }
+        result += "-I" + include_dirs[i];
+    }
+    return result;
 #else
     std::vector<std::string> flags;
-    if (!config_->paths.libraries_dir.empty()) {
-        flags.push_back("-I" + config_->paths.libraries_dir);
+    for (const auto& dir : include_dirs) {
+        flags.push_back("-I" + dir);
     }
     if (brew_) {
         auto r = brew_->get_include("libelf");

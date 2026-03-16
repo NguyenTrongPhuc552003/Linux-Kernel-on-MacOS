@@ -33,5 +33,9 @@ target_include_directories(elmos
 
 target_link_libraries(elmos PRIVATE elmos_app)
 
+# Embed resources into the binary (generates build/generated/embedded_resources.*
+# at configure time — must come AFTER add_executable so the target exists).
+elmos_embed_resources(elmos)
+
 # Install
 install(TARGETS elmos RUNTIME DESTINATION bin)

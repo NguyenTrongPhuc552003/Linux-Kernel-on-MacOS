@@ -24,7 +24,7 @@ void DarwinPlatform::set_executor(executor::Executor* exec) {
     exec_ = exec;
     resolver_ = std::make_shared<homebrew::Resolver>(exec_);
     disk_img_->set_executor(exec);
-    packages_->set_executor(exec);
+    packages_ = std::make_unique<DarwinPackages>(exec_, resolver_);
 }
 
 // --- DarwinDiskImage ---
@@ -153,6 +153,10 @@ auto DarwinPackages::get_lib_path(const std::string& pkg) -> std::string {
 
 auto DarwinPackages::get_include_path(const std::string& pkg) -> std::string {
     return resolver_->get_include(pkg);
+}
+
+auto DarwinPackages::build_gnu_environment() -> EnvList {
+    return resolver_->build_gnu_tools_env();
 }
 
 // --- DarwinPaths ---

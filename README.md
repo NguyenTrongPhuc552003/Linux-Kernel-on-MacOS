@@ -54,26 +54,34 @@ cd elmos
 # Configure + Build (system packages + FetchContent for inja/ftxui)
 cmake --preset default
 cmake --build build --parallel
-
-# Or use Taskfile
-task build
 ```
 
 ### 3. Initialize Workspace
 
 ```bash
-./build/bin/elmos init my_project    # Create workspace structure
+./build/bin/elmos init my_project    # Create disk image, mount, register workspace
 ./build/bin/elmos doctor             # Verify environment
+```
+
+No need to `cd` — all commands automatically target the active workspace.
+
+### 4. Multiple Workspaces
+
+```bash
+./build/bin/elmos init project_a project_b   # Create multiple workspaces at once
+./build/bin/elmos pick                       # List all workspaces
+./build/bin/elmos pick project_b             # Switch to project_b
+./build/bin/elmos status                     # Shows project_b info
 ```
 
 ### 4. Install Toolchain
 
 ```bash
-./build/bin/elmos toolchains install    # Install crosstool-ng
-./build/bin/elmos toolchains list       # List available targets
-./build/bin/elmos arch set arm64        # Set target architecture
-./build/bin/elmos toolchains build      # Build the toolchain (~30-60 min)
-./build/bin/elmos toolchains status     # Verify installation
+./build/bin/elmos arch arm64                # Set target architecture
+./build/bin/elmos toolchains install        # Install crosstool-ng
+./build/bin/elmos toolchains list           # List available targets
+./build/bin/elmos toolchains build          # Build the toolchain (~30-60 min)
+./build/bin/elmos toolchains status         # Verify installation
 ```
 
 ### 5. Build Kernel & Run
@@ -95,15 +103,17 @@ Launch with `./build/bin/elmos tui` for a rich interactive interface with catego
 
 ### Core Commands
 
-| Command                 | Description                                        |
-| ----------------------- | -------------------------------------------------- |
-| `elmos init <name>`     | Initialize workspace directory structure           |
-| `elmos doctor`          | Check environment health (tools, deps, toolchains) |
-| `elmos status`          | Show workspace status                              |
-| `elmos version`         | Display version and build info                     |
-| `elmos tui`             | Launch interactive terminal UI                     |
-| `elmos arch show`       | Show current target architecture                   |
-| `elmos arch set <arch>` | Set target architecture (arm64/arm/riscv)          |
+| Command                         | Description                                        |
+| ------------------------------- | -------------------------------------------------- |
+| `elmos init <name> [name2 ...]` | Create disk image(s), mount, register workspace(s) |
+| `elmos pick [name]`             | Select active workspace (or list all)              |
+| `elmos exit`                    | Unmount workspace volume and cleanup               |
+| `elmos doctor`                  | Check environment health (tools, deps, toolchains) |
+| `elmos status`                  | Show active workspace status                       |
+| `elmos version`                 | Display version and build info                     |
+| `elmos tui`                     | Launch interactive terminal UI                     |
+| `elmos arch`                    | Show current target architecture                   |
+| `elmos arch <arch>`             | Set target architecture (arm64/arm/riscv)          |
 
 ### Build Commands
 
@@ -164,7 +174,7 @@ Launch with `./build/bin/elmos tui` for a rich interactive interface with catego
 
 ## Build System
 
-Uses [CMake](https://cmake.org/) with presets and optional [Task](https://taskfile.dev):
+Uses [CMake](https://cmake.org/) with presets:
 
 ```bash
 # CMake presets
@@ -172,15 +182,14 @@ cmake --preset default          # System packages + FetchContent
 cmake --preset vcpkg            # vcpkg for all dependencies (requires VCPKG_ROOT)
 cmake --preset release          # Optimized release build
 
-# Taskfile commands
-task --list                     # Show all targets
-task build                      # Build elmos binary
-task clean                      # Clean all artifacts
-task test                       # Run tests
-task release                    # Release build
-task docs                       # Build documentation
-task elmos:doctor               # Run environment check
-task elmos:status               # Show workspace status
+# Build + test
+cmake --build build --parallel
+cmake --build build --target test
+
+# Clean rebuild
+rm -rf build/
+cmake --preset default
+cmake --build build --parallel
 ```
 
 ## Architecture

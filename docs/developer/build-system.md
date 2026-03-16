@@ -43,21 +43,18 @@ Two strategies supported:
 
 ---
 
-## Taskfile Overview
+## CMake Workflow Commands
 
-The `Taskfile.yml` provides developer workflow tasks:
+All developer tasks use CMake presets:
 
-| Task                | Purpose                   |
-| ------------------- | ------------------------- |
-| `task build`        | Configure + build binary  |
-| `task clean`        | Remove build directory    |
-| `task test`         | Run all tests             |
-| `task release`      | Optimized release build   |
-| `task docs`         | Build documentation site  |
-| `task install`      | Install to /usr/local/bin |
-| `task dev:check`    | Pre-commit style check    |
-| `task dev:setup`    | Full development setup    |
-| `task elmos:doctor` | Run `elmos doctor`        |
+| Command                             | Purpose                 |
+| ----------------------------------- | ----------------------- |
+| `cmake --preset default`            | Configure (system pkgs) |
+| `cmake --preset vcpkg`              | Configure (vcpkg)       |
+| `cmake --preset release`            | Configure release build |
+| `cmake --build build --parallel`    | Build binary            |
+| `cmake --build build --target test` | Run all tests           |
+| `rm -rf build/`                     | Clean build directory   |
 
 ---
 

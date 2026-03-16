@@ -51,6 +51,7 @@ private:
 
     auto get_toolchain_env() -> Result<std::pair<EnvList, std::string>>;
     auto force_graphics_config(std::stop_token token) -> VoidResult;
+    auto force_qemu_boot_config(std::stop_token token) -> VoidResult;
 };
 
 }  // namespace elmos::domain::builder

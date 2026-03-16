@@ -27,6 +27,8 @@ struct CheckResult {
     bool passed = false;
     bool required = true;
     std::string message;
+    std::string category;
+    std::string install_hint;
 };
 
 class HealthChecker {
@@ -41,6 +43,10 @@ public:
     auto check_cross_gdb(std::stop_token token) -> std::vector<CheckResult>;
     auto check_cross_gcc(std::stop_token token) -> std::vector<CheckResult>;
     auto check_toolchains() -> std::vector<CheckResult>;
+
+    auto fix_packages(std::stop_token token, const std::vector<CheckResult>& failed)
+        -> std::vector<std::string>;
+    auto fix_headers(std::stop_token token) -> std::vector<std::string>;
 
 private:
     infra::executor::Executor* exec_;

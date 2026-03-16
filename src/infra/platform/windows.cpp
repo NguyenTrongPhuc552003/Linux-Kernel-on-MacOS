@@ -152,6 +152,10 @@ auto WindowsPackages::get_include_path(const std::string& /*pkg*/) -> std::strin
     return "/usr/include";
 }
 
+auto WindowsPackages::build_gnu_environment() -> EnvList {
+    return {};  // WSL uses apt packages — GNU tools are system default
+}
+
 // --- WindowsPaths ---
 
 auto WindowsPaths::workspace_root(const std::string& name) -> std::string {

@@ -12,7 +12,8 @@
             "binaryDir": "${sourceDir}/build",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CMAKE_COLOR_DIAGNOSTICS": "ON"
             }
         },
         {
@@ -22,35 +23,261 @@
             "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CMAKE_COLOR_DIAGNOSTICS": "ON"
             }
         },
         {
             "name": "release",
-            "displayName": "Release",
+            "displayName": "Release (optimized)",
             "binaryDir": "${sourceDir}/build-release",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_COLOR_DIAGNOSTICS": "ON"
+            }
+        },
+        {
+            "name": "ci",
+            "displayName": "CI (Debug + Werror)",
+            "binaryDir": "${sourceDir}/build-ci",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CMAKE_COLOR_DIAGNOSTICS": "ON",
+                "CMAKE_CXX_FLAGS": "-Werror"
             }
         }
     ],
     "buildPresets": [
         {
             "name": "default",
-            "configurePreset": "default"
+            "displayName": "Build (parallel)",
+            "configurePreset": "default",
+            "jobs": 0
+        },
+        {
+            "name": "verbose",
+            "displayName": "Build (verbose)",
+            "configurePreset": "default",
+            "verbose": true,
+            "jobs": 0
         },
         {
             "name": "release",
-            "configurePreset": "release"
+            "displayName": "Release build",
+            "configurePreset": "release",
+            "jobs": 0
+        },
+        {
+            "name": "ci",
+            "displayName": "CI build",
+            "configurePreset": "ci",
+            "jobs": 0
+        },
+        {
+            "name": "fmt",
+            "displayName": "Format all sources",
+            "configurePreset": "default",
+            "targets": [
+                "fmt"
+            ]
+        },
+        {
+            "name": "loc",
+            "displayName": "Count lines of code",
+            "configurePreset": "default",
+            "targets": [
+                "loc"
+            ]
+        },
+        {
+            "name": "clean",
+            "displayName": "Remove compiled artifacts (keep cache)",
+            "configurePreset": "default",
+            "targets": [
+                "clean"
+            ]
+        },
+        {
+            "name": "purge",
+            "displayName": "Nuke ALL build* directories",
+            "configurePreset": "default",
+            "targets": [
+                "purge"
+            ]
+        },
+        {
+            "name": "install",
+            "displayName": "Install elmos to /usr/local/bin (sudo)",
+            "configurePreset": "default",
+            "targets": [
+                "install-system"
+            ]
+        },
+        {
+            "name": "_fmt-check",
+            "displayName": "Format check (internal workflow step)",
+            "configurePreset": "default",
+            "targets": [
+                "fmt-check"
+            ]
+        },
+        {
+            "name": "_doctor",
+            "displayName": "Doctor check (internal workflow step)",
+            "configurePreset": "default",
+            "targets": [
+                "doctor"
+            ]
         }
     ],
     "testPresets": [
         {
             "name": "default",
+            "displayName": "Run tests",
             "configurePreset": "default",
             "output": {
-                "outputOnFailure": true
+                "outputOnFailure": true,
+                "shortProgress": true
             }
+        },
+        {
+            "name": "verbose",
+            "displayName": "Run tests (verbose)",
+            "configurePreset": "default",
+            "output": {
+                "outputOnFailure": true,
+                "verbosity": "verbose"
+            }
+        },
+        {
+            "name": "verify",
+            "displayName": "Verify tests (stop-on-failure, 300s timeout)",
+            "configurePreset": "default",
+            "output": {
+                "outputOnFailure": true,
+                "verbosity": "verbose",
+                "shortProgress": false
+            },
+            "execution": {
+                "stopOnFailure": true,
+                "timeout": 300
+            }
+        },
+        {
+            "name": "ci",
+            "displayName": "CI tests",
+            "configurePreset": "ci",
+            "output": {
+                "outputOnFailure": true,
+                "verbosity": "verbose"
+            }
+        }
+    ],
+    "workflowPresets": [
+        {
+            "name": "build",
+            "displayName": "Configure + Build",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "default"
+                },
+                {
+                    "type": "build",
+                    "name": "default"
+                }
+            ]
+        },
+        {
+            "name": "purge",
+            "displayName": "Purge all build* directories",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "default"
+                },
+                {
+                    "type": "build",
+                    "name": "purge"
+                }
+            ]
+        },
+        {
+            "name": "verify",
+            "displayName": "Verify (fmt-check → build → test → doctor)",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "default"
+                },
+                {
+                    "type": "build",
+                    "name": "_fmt-check"
+                },
+                {
+                    "type": "build",
+                    "name": "default"
+                },
+                {
+                    "type": "test",
+                    "name": "verify"
+                },
+                {
+                    "type": "build",
+                    "name": "_doctor"
+                }
+            ]
+        },
+        {
+            "name": "install",
+            "displayName": "Build + install to /usr/local/bin",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "default"
+                },
+                {
+                    "type": "build",
+                    "name": "default"
+                },
+                {
+                    "type": "build",
+                    "name": "install"
+                }
+            ]
+        },
+        {
+            "name": "release",
+            "displayName": "Release pipeline",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "release"
+                },
+                {
+                    "type": "build",
+                    "name": "release"
+                }
+            ]
+        },
+        {
+            "name": "ci",
+            "displayName": "CI pipeline (build + test)",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "ci"
+                },
+                {
+                    "type": "build",
+                    "name": "ci"
+                },
+                {
+                    "type": "test",
+                    "name": "ci"
+                }
+            ]
         }
     ]
 }

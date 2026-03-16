@@ -68,14 +68,14 @@ auto MockExecutor::run_silent(std::stop_token /*token*/, const EnvList& env, con
     return {};
 }
 
-auto MockExecutor::look_path(const std::string& cmd) -> Result<std::string> {
+auto MockExecutor::look_path(const std::string& cmd) -> std::optional<std::string> {
     if (auto it = look_path_errors.find(cmd); it != look_path_errors.end()) {
-        return make_error(it->second);
+        return std::nullopt;
     }
     if (auto it = look_path_responses.find(cmd); it != look_path_responses.end()) {
         return it->second;
     }
-    return make_error(Error(ErrorCode::Dependency, "executable not found in PATH: " + cmd));
+    return std::nullopt;
 }
 
 auto MockExecutor::exec_replace(const std::string& cmd, const std::vector<std::string>& args,

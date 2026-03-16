@@ -16,58 +16,58 @@ Toolchains enable cross-compilation for target architectures. ELMOS supports pre
 
 ## Commands
 
-### Install crosstool-ng
+### Clone crosstool-ng
 
 ```bash
-./build/bin/elmos toolchains install
+elmos toolchain clone
 ```
 
-Clones and builds crosstool-ng to `~/.elmos/toolchains/crosstool-ng/`.
+Clones and builds crosstool-ng into the workspace toolchains directory.
 
 ### List Targets
 
 ```bash
-./build/bin/elmos toolchains list
+elmos toolchain list
 ```
 
 Shows available configurations.
 
-### Select Target
+### Pick Target
 
 ```bash
-./build/bin/elmos toolchains select <target>
+elmos toolchain <target>
 ```
 
-Example: `./build/bin/elmos toolchains select riscv64-unknown-linux-gnu`
+Example: `elmos toolchain riscv64-unknown-linux-gnu`
 
 ### Build Toolchain
 
 ```bash
-./build/bin/elmos toolchains build
+elmos toolchain build
 ```
 
-Builds the selected toolchain (~30–60 min). Installs to `~/.elmos/toolchains/x-tools/`.
+Builds the selected toolchain (~30–60 min). Installs to `<workspace>/toolchains/x-tools/`.
 
 ### Check Status
 
 ```bash
-./build/bin/elmos toolchains status
+elmos toolchain status
 ```
 
 Verifies installation and shows installed toolchains.
 
-### Show Environment
+### Show Info
 
 ```bash
-./build/bin/elmos toolchains env
+elmos toolchain show
 ```
 
-Displays `CROSS_COMPILE`, `PATH`, etc.
+Displays current toolchain architecture, bin dir, and installed status.
 
 ### Customize Config
 
 ```bash
-./build/bin/elmos toolchains menuconfig
+elmos toolchain menuconfig
 ```
 
 Interactive configuration for advanced users (requires crosstool-ng).
@@ -75,14 +75,14 @@ Interactive configuration for advanced users (requires crosstool-ng).
 ### Clean Artifacts
 
 ```bash
-./build/bin/elmos toolchains clean
+elmos toolchain clean
 ```
 
 Removes build artifacts.
 
 ## Automatic Detection
 
-Kernel, module, and app builds auto-detect installed toolchains based on the selected architecture (`./build/bin/elmos arch set <arch>`).
+Kernel, module, and app builds auto-detect installed toolchains based on the selected architecture (`./build/bin/elmos arch <arch>`).
 
 ## Custom Toolchains
 

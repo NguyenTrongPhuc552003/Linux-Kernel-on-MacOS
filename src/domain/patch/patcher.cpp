@@ -32,28 +32,29 @@ auto Patcher::apply(std::stop_token token, const std::string& target_dir,
 
 auto Patcher::apply_single(std::stop_token token, const std::string& target_dir,
                            const std::string& patch_file) -> VoidResult {
-    return exec_->run_in_dir(token, target_dir, "git", {"apply", "--stat", patch_file});
+    return exec_->run_in_dir(token, target_dir, "git", {"apply", patch_file});
 }
 
 auto Patcher::list_patches(const std::string& patch_dir) -> Result<std::vector<PatchInfo>> {
     if (!fs_->exists(patch_dir))
         return std::vector<PatchInfo>{};
 
-    auto entries = fs_->read_dir(patch_dir);
-    if (!entries)
-        return make_error(entries.error());
-
+    // Recursively scan patch_dir for .patch and .diff files
+    // Supports nested structure: version/arch/patch_file
     std::vector<PatchInfo> patches;
-    for (const auto& e : *entries) {
-        if (e.is_directory)
+    for (const auto& entry : fs::recursive_directory_iterator(patch_dir)) {
+        if (entry.is_directory())
             continue;
-        if (e.name.ends_with(".patch") || e.name.ends_with(".diff")) {
+        auto name = entry.path().filename().string();
+        if (name.ends_with(".patch") || name.ends_with(".diff")) {
+            auto rel = fs::relative(entry.path(), patch_dir).string();
             patches.push_back({
-                .name = e.name,
-                .path = (fs::path(patch_dir) / e.name).string(),
+                .name = rel,
+                .path = entry.path().string(),
             });
         }
     }
+
     std::sort(patches.begin(), patches.end(),
               [](const auto& a, const auto& b) { return a.name < b.name; });
     return patches;

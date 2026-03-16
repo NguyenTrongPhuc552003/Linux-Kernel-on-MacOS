@@ -49,6 +49,7 @@ public:
     auto get_bin_path(const std::string& pkg) -> std::string override;
     auto get_lib_path(const std::string& pkg) -> std::string override;
     auto get_include_path(const std::string& pkg) -> std::string override;
+    auto build_gnu_environment() -> EnvList override;
 
     void set_executor(executor::Executor* exec) { exec_ = exec; }
 

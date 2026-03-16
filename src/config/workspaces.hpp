@@ -36,6 +36,14 @@ public:
 
     static auto find_workspace_root() -> Result<std::string>;
 
+    // Global workspace registry (stored in ~/.elmos/)
+    static auto global_elmos_dir() -> std::string;
+    static auto workspace_dir(const std::string& name) -> std::string;
+    static auto workspace_config_path(const std::string& name) -> std::string;
+    static auto get_active_workspace() -> Result<std::string>;
+    static auto set_active_workspace(const std::string& name) -> VoidResult;
+    static auto list_workspaces() -> Result<std::vector<std::string>>;
+
 private:
     std::string root_path_;
 };

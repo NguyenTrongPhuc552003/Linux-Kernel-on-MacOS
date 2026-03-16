@@ -4,11 +4,15 @@
 
 #include "app.hpp"
 
+#include <config/workspaces.hpp>
 #include <domain/plugin/builtin.hpp>
 #include <infra/platform/interface.hpp>
 #include <ui/help.hpp>
 
 #include "commands/commands.hpp"
+
+#include <cstdlib>
+#include <filesystem>
 
 namespace elmos::app {
 
@@ -25,7 +29,7 @@ App::App(std::unique_ptr<infra::executor::Executor> exec,
 
     // Domain services
     toolchain_manager_ = std::make_unique<domain::toolchain::Manager>(exec_.get(), fs_.get(),
-                                                                      &config_);
+                                                                      platform_.get(), &config_);
     kernel_builder_ = std::make_unique<domain::builder::KernelBuilder>(context_.get(),
                                                                        toolchain_manager_.get());
     module_builder_ = std::make_unique<domain::builder::ModuleBuilder>(context_.get(),
@@ -69,11 +73,51 @@ auto App::build_cli() -> CLI::App& {
 auto App::run(int argc, char** argv) -> int {
     build_cli();
     CLI11_PARSE(cli_, argc, argv);
+    // No subcommand invoked → ensure first-run setup, then print help.
+    if (cli_.get_subcommands().empty()) {
+        ensure_first_run_setup();
+        std::cout << cli_.help();
+    }
     return 0;
 }
 
 void App::register_commands() {
     commands::register_all(*this, cli_);
+}
+
+void App::ensure_first_run_setup() {
+    const char* home = std::getenv("HOME");
+    if (!home)
+        return;
+
+    auto elmos_dir = std::filesystem::path(home) / ".elmos";
+    std::error_code ec;
+    if (std::filesystem::is_directory(elmos_dir, ec))
+        return;  // Already set up.
+
+    printer_.step("First-run setup: creating {}/ ...", elmos_dir.string());
+
+    for (const auto& sub : {"sysroot", "workspaces"}) {
+        auto dir = elmos_dir / sub;
+        std::filesystem::create_directories(dir, ec);
+        if (ec) {
+            printer_.error("Failed to create {}: {}", dir.string(), ec.message());
+            return;
+        }
+    }
+
+    printer_.success("Created {}/ with sysroot/ and workspaces/ subdirectories.",
+                     elmos_dir.string());
+}
+
+auto App::save_workspace_config() -> VoidResult {
+    auto& name = config_.image.volume_name;
+    if (name.empty())
+        return {};
+    auto path = config::WorkspaceManager::workspace_config_path(name);
+    if (!std::filesystem::exists(path))
+        return {};  // workspace not registered, skip save
+    return config_.save(path);
 }
 
 }  // namespace elmos::app

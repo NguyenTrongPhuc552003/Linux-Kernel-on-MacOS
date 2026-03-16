@@ -4,9 +4,45 @@
 
 #include "workspaces.hpp"
 
+#include <algorithm>
+#include <cstdlib>
+#include <fstream>
+
+#if defined(ELMOS_PLATFORM_DARWIN) || defined(ELMOS_PLATFORM_LINUX)
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <pwd.h>
+#endif
+
 namespace elmos::config {
 
 namespace fs = std::filesystem;
+
+namespace {
+
+auto resolve_registry_home() -> std::string {
+#if defined(ELMOS_PLATFORM_DARWIN) || defined(ELMOS_PLATFORM_LINUX)
+    // When running under sudo, keep workspace registry tied to the invoking user.
+    if (const char* sudo_user = std::getenv("SUDO_USER"); sudo_user && *sudo_user) {
+        if (auto* pw = ::getpwnam(sudo_user); pw && pw->pw_dir && *pw->pw_dir) {
+            return pw->pw_dir;
+        }
+    }
+
+    if (auto* pw = ::getpwuid(::getuid()); pw && pw->pw_dir && *pw->pw_dir) {
+        return pw->pw_dir;
+    }
+#endif
+
+    if (const char* home = std::getenv("HOME"); home && *home) {
+        return home;
+    }
+
+    return "/tmp";
+}
+
+}  // namespace
 
 WorkspaceManager::WorkspaceManager(const std::string& root_path)
     : root_path_(root_path.empty() ? "." : root_path) {}
@@ -124,6 +160,69 @@ auto WorkspaceManager::find_workspace_root() -> Result<std::string> {
 
     return make_error(
         Error::config("workspace root (.elmos/) not found in current directory or any parent"));
+}
+
+// ── Global workspace registry ───────────────────────────────────────────────
+
+auto WorkspaceManager::global_elmos_dir() -> std::string {
+    return resolve_registry_home() + "/.elmos";
+}
+
+auto WorkspaceManager::workspace_config_path(const std::string& name) -> std::string {
+    return global_elmos_dir() + "/workspaces/" + name + "/config.yaml";
+}
+
+auto WorkspaceManager::get_active_workspace() -> Result<std::string> {
+    auto path = global_elmos_dir() + "/active";
+    std::ifstream f(path);
+    if (!f)
+        return make_error(Error::config("no active workspace — run 'elmos init <name>' first"));
+    std::string name;
+    std::getline(f, name);
+    while (!name.empty() && (name.back() == '\n' || name.back() == '\r' || name.back() == ' '))
+        name.pop_back();
+    if (name.empty())
+        return make_error(Error::config("no active workspace — run 'elmos init <name>' first"));
+    return name;
+}
+
+auto WorkspaceManager::set_active_workspace(const std::string& name) -> VoidResult {
+    auto dir = global_elmos_dir() + "/workspaces";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+
+    auto cfg_path = workspace_config_path(name);
+    if (!fs::exists(cfg_path)) {
+        return make_error(
+            Error::config("workspace '" + name + "' not found — run 'elmos init " + name + "'"));
+    }
+
+    auto path = global_elmos_dir() + "/active";
+    std::ofstream f(path, std::ios::trunc);
+    if (!f)
+        return make_error(Error::config("cannot write " + path));
+    f << name;
+    return {};
+}
+
+auto WorkspaceManager::workspace_dir(const std::string& name) -> std::string {
+    return global_elmos_dir() + "/workspaces/" + name;
+}
+
+auto WorkspaceManager::list_workspaces() -> Result<std::vector<std::string>> {
+    auto dir = global_elmos_dir() + "/workspaces";
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec))
+        return std::vector<std::string>{};
+
+    std::vector<std::string> names;
+    for (const auto& entry : fs::directory_iterator(dir, ec)) {
+        // Each workspace is a subdirectory containing config.yaml
+        if (entry.is_directory() && fs::exists(entry.path() / "config.yaml", ec))
+            names.push_back(entry.path().filename().string());
+    }
+    std::sort(names.begin(), names.end());
+    return names;
 }
 
 }  // namespace elmos::config

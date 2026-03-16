@@ -48,12 +48,12 @@ public:
     virtual auto run_silent(std::stop_token token, const EnvList& env, const std::string& cmd,
                             const std::vector<std::string>& args = {}) -> VoidResult = 0;
 
-    /// Search for an executable in the system PATH.
-    virtual auto look_path(const std::string& cmd) -> Result<std::string> = 0;
+    /// Resolve executable location from PATH.
+    virtual auto look_path(const std::string& cmd) -> std::optional<std::string> = 0;
 
-    /// Replace the current process with the given command (execvp).
+    /// Replace current process image with command (no return on success).
     virtual auto exec_replace(const std::string& cmd, const std::vector<std::string>& args,
-                              const EnvList& env) -> VoidResult = 0;
+                              const EnvList& env = {}) -> VoidResult = 0;
 };
 
 }  // namespace elmos::infra::executor

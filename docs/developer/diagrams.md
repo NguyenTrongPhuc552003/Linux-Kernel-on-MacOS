@@ -198,12 +198,12 @@ This page provides comprehensive visual documentation of ELMOS architecture at m
 1. Create a new `.puml` file in `docs/diagrams/` following PlantUML 3.x syntax
 2. Add the diagram to the appropriate subsection on this page
 3. Include a "Purpose", "Key Elements", and "Audience" explanation
-4. Run `task docs:serve` to verify rendering
+4. Run `mkdocs serve` to verify rendering
 
 ### Updating Existing Diagrams
 
 1. Edit the `.puml` file in `docs/diagrams/`
-2. Check syntax with `task docs:serve`
+2. Check syntax with `mkdocs serve`
 3. If 2+ diagrams fail to render, reduce complexity or split into separate diagrams
 4. Update explanatory text if behavior changes
 

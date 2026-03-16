@@ -4,14 +4,20 @@ This tutorial walks through building your first Linux kernel with ELMOS.
 
 ## Prerequisites
 
-Ensure ELMOS is [installed](installation.md) and the workspace initialized.
+Ensure ELMOS is [installed](installation.md) and a workspace initialized:
+
+```bash
+./build/bin/elmos init my_kernel
+```
+
+All subsequent commands automatically target the active workspace.
 
 ## Step 1: Select Architecture
 
 Choose a target architecture (e.g., ARM64):
 
 ```bash
-./build/bin/elmos arch set arm64
+./build/bin/elmos arch arm64
 ```
 
 Available architectures: `arm64`, `arm`, `riscv`

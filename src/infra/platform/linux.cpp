@@ -363,6 +363,10 @@ auto LinuxPackages::get_include_path(const std::string& /*pkg*/) -> std::string 
     return "/usr/include";
 }
 
+auto LinuxPackages::build_gnu_environment() -> EnvList {
+    return {};  // GNU tools are system default on Linux
+}
+
 // --- LinuxPaths ---
 
 auto LinuxPaths::workspace_root(const std::string& name) -> std::string {

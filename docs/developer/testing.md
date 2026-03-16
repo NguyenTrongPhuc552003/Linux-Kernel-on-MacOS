@@ -14,11 +14,8 @@ ELMOS uses [Catch2](https://github.com/catchorg/Catch2/) (v3) for unit testing w
 # Via CMake
 cmake --build build --target test
 
-# Via Task
-task test
-
 # Verbose output
-task test:verbose
+ctest --test-dir build --output-on-failure
 ```
 
 ## Mocking

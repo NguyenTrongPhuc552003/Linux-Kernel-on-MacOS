@@ -7,6 +7,7 @@
 #include "arch.hpp"
 #include "defaults.hpp"
 #include "machine.hpp"
+#include "workspaces.hpp"
 
 #include <yaml-cpp/yaml.h>
 
@@ -65,7 +66,7 @@ static void apply_path_defaults(Config& cfg) {
     set_if_empty(cfg.paths.kernel_dir, (fs::path(mount) / "linux").string());
     set_if_empty(cfg.paths.modules_dir, (fs::path(root) / "examples" / "modules").string());
     set_if_empty(cfg.paths.apps_dir, (fs::path(root) / "examples" / "apps").string());
-    set_if_empty(cfg.paths.libraries_dir, (fs::path(root) / "assets" / "libraries").string());
+    set_if_empty(cfg.paths.libraries_dir, (fs::path(root) / "include" / "sysroot").string());
     set_if_empty(cfg.paths.patches_dir, (fs::path(root) / "patches").string());
     set_if_empty(cfg.paths.rootfs_dir, (fs::path(mount) / "rootfs").string());
     set_if_empty(cfg.paths.disk_image, (fs::path(mount) / "disk.img").string());
@@ -181,7 +182,18 @@ auto load(const std::string& config_path) -> Result<Config> {
     std::string file_to_load = config_path;
 
     if (file_to_load.empty()) {
-        // Auto-detect workspace config
+        // Try active workspace config from ~/.elmos/workspaces/<name>.yaml
+        auto active = WorkspaceManager::get_active_workspace();
+        if (active) {
+            auto ws_cfg = WorkspaceManager::workspace_config_path(*active);
+            if (fs::exists(ws_cfg)) {
+                file_to_load = ws_cfg;
+            }
+        }
+    }
+
+    if (file_to_load.empty()) {
+        // Auto-detect workspace config from CWD (legacy fallback)
         std::error_code ec;
         auto cwd = fs::current_path(ec);
         if (!ec) {

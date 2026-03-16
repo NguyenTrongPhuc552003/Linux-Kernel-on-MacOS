@@ -2,135 +2,146 @@
 // tests/unit/config_loader_tests.cpp — Configuration loading unit tests
 // ============================================================================
 
+#include <config/arch.hpp>
+#include <config/defaults.hpp>
+#include <config/loader.hpp>
+#include <config/types.hpp>
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
-#include <config/loader.hpp>
-#include <config/arch.hpp>
-#include <config/types.hpp>
-
-#include <sstream>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 
 namespace fs = std::filesystem;
+using namespace Catch::Matchers;
+using namespace elmos::config;
 
-TEST_CASE("Configuration Loader - Basic YAML parsing", "[config][loader]")
-{
-    SECTION("Load valid workspace configuration")
-    {
-        // Given: a valid YAML config string
-        [[maybe_unused]] const auto yaml_content = R"(
-workspace:
-  name: "test_workspace"
-  path: "/tmp/test"
-machine:
-  name: "orange_pi_5"
-  architecture: aarch64
-kernel:
-  version: "6.1"
-  enable: true
-rootfs:
-  distro: "debian"
-  enable: true
-)";
+// ── Default values applied on empty config ─────────────────────────────────
 
-        // When: loading configuration
-        // Then: should parse without errors
-        // Note: This is a placeholder - actual implementation depends on YAML library
-        REQUIRE(true); // Replace with actual assertions
-    }
+TEST_CASE("Config defaults applied when no file found", "[config][defaults]") {
+    // Isolate from any active workspace by pointing HOME at a temp directory
+    auto tmp_home = fs::temp_directory_path() / "elmos_test_home";
+    fs::create_directories(tmp_home);
+    std::string old_home = std::getenv("HOME") ? std::getenv("HOME") : "";
+    setenv("HOME", tmp_home.c_str(), 1);
+
+    auto result = load("");  // empty path → auto-detect returns default config
+    REQUIRE(result.has_value());
+    const auto& cfg = *result;
+
+    CHECK(cfg.build.arch == std::string(kDefaultArch));
+    CHECK(cfg.build.jobs > 0);
+    CHECK(cfg.qemu.memory == std::string(kDefaultMemory));
+    CHECK(cfg.qemu.gdb_port == kDefaultGDBPort);
+    CHECK(cfg.qemu.ssh_port == kDefaultSSHPort);
+    CHECK(cfg.image.volume_name == std::string(kDefaultVolumeName));
+    CHECK(cfg.image.size == std::string(kDefaultImageSize));
+
+    // Restore HOME
+    setenv("HOME", old_home.c_str(), 1);
+    fs::remove_all(tmp_home);
 }
 
-TEST_CASE("Configuration Loader - Architecture validation", "[config][arch]")
-{
-    SECTION("Recognize valid architectures")
-    {
-        std::vector<std::string> valid_archs = {
-            "arm",
-            "aarch64",
-            "x86_64",
-            "riscv64"};
+// ── YAML round-trip ─────────────────────────────────────────────────────────
 
-        for (const auto &arch_name : valid_archs)
-        {
-            // When: validating architecture name
-            // Then: should be accepted
-            REQUIRE(!arch_name.empty());
-        }
+TEST_CASE("Config YAML file: round-trip write→read", "[config][yaml]") {
+    auto tmp = fs::temp_directory_path() / "elmos_test_config.yaml";
+
+    // Write a minimal YAML to a temp file
+    {
+        std::ofstream f(tmp);
+        REQUIRE(f.is_open());
+        f << "build:\n"
+             "  arch: riscv\n"
+             "  jobs: 4\n"
+             "  llvm: false\n"
+             "  verbose: true\n"
+             "qemu:\n"
+             "  memory: 4G\n"
+             "  gdb_port: 5678\n"
+             "  ssh_port: 3333\n"
+             "  smp: 2\n"
+             "image:\n"
+             "  volume_name: mytest\n"
+             "  size: 20G\n";
     }
 
-    SECTION("Reject invalid architectures")
-    {
-        std::vector<std::string> invalid_archs = {
-            "invalid_arch",
-            "mips",
-            "powerpc"};
+    auto result = load(tmp.string());
+    fs::remove(tmp);
 
-        for (const auto &arch_name : invalid_archs)
-        {
-            // When: validating architecture name
-            // Then: should be rejected
-            // Note: Placeholder for actual implementation
-            REQUIRE(!arch_name.empty());
-        }
-    }
+    REQUIRE(result.has_value());
+    const auto& cfg = *result;
+
+    CHECK(cfg.build.arch == "riscv");
+    CHECK(cfg.build.jobs == 4);
+    CHECK(cfg.build.llvm == false);
+    CHECK(cfg.build.verbose == true);
+    CHECK(cfg.qemu.memory == "4G");
+    CHECK(cfg.qemu.gdb_port == 5678);
+    CHECK(cfg.qemu.ssh_port == 3333);
+    CHECK(cfg.qemu.smp == 2);
+    CHECK(cfg.image.volume_name == "mytest");
+    CHECK(cfg.image.size == "20G");
 }
 
-TEST_CASE("Configuration Loader - File system operations", "[config][fs]")
-{
-    SECTION("Read existing YAML file")
-    {
-        // Note: Tests should use temporary directories
-        // This is a placeholder for actual implementation
+// ── Missing file returns error only when path is explicit ──────────────────
 
-        REQUIRE(true); // Replace with actual file I/O test
-    }
-
-    SECTION("Handle missing configuration file")
-    {
-        // When: trying to load non-existent config
-        // Then: should return meaningful error
-
-        REQUIRE(true); // Replace with actual error handling test
-    }
+TEST_CASE("Config: explicit missing file returns error", "[config][errors]") {
+    auto result = load("/nonexistent/elmos_totally_missing.yaml");
+    REQUIRE_FALSE(result.has_value());
+    CHECK_THAT(result.error().message(), ContainsSubstring("not found"));
 }
 
-TEST_CASE("Configuration Loader - Default values", "[config][defaults]")
-{
-    SECTION("Apply default kernel version")
-    {
-        // Given: config without explicit kernel version
-        // When: loading config
-        // Then: should apply default version (e.g., 6.1.x)
+// ── Malformed YAML returns error ────────────────────────────────────────────
 
-        REQUIRE(true); // Replace with actual defaults test
+TEST_CASE("Config: malformed YAML returns parse error", "[config][errors]") {
+    auto tmp = fs::temp_directory_path() / "elmos_bad_yaml.yaml";
+    {
+        std::ofstream f(tmp);
+        REQUIRE(f.is_open());
+        f << "build:\n"
+             "  arch: [unclosed bracket\n";
     }
 
-    SECTION("Apply default rootfs distro")
-    {
-        // Given: config without explicit distro
-        // When: loading config
-        // Then: should apply default distro (e.g., debian)
+    auto result = load(tmp.string());
+    fs::remove(tmp);
 
-        REQUIRE(true); // Replace with actual defaults test
-    }
+    REQUIRE_FALSE(result.has_value());
+    CHECK_THAT(result.error().message(), ContainsSubstring("parse"));
 }
 
-TEST_CASE("Configuration Loader - Workspace validation", "[config][workspace]")
-{
-    SECTION("Validate workspace directory exists")
-    {
-        // When: workspace directory doesn't exist
-        // Then: should fail validation with descriptive error
+// ── Default kDefaultArch is a valid registered architecture ────────────────
 
-        REQUIRE(true); // Replace with actual validation test
+TEST_CASE("Default arch is registered in arch registry", "[config][arch]") {
+    CHECK(is_valid_arch(std::string(kDefaultArch)));
+}
+
+// ── Computed defaults: paths derive from project_root ──────────────────────
+
+TEST_CASE("Config: paths derived from project_root", "[config][paths]") {
+    auto tmp = fs::temp_directory_path() / "elmos_paths_test.yaml";
+    {
+        std::ofstream f(tmp);
+        REQUIRE(f.is_open());
+        f << "paths:\n"
+             "  project_root: /tmp/my_workspace\n"
+             "image:\n"
+             "  volume_name: myvol\n"
+             "  mount_point: /Volumes/myvol\n";
     }
 
-    SECTION("Validate directory permissions")
-    {
-        // When: workspace directory not writable
-        // Then: should fail with permission error
+    auto result = load(tmp.string());
+    fs::remove(tmp);
 
-        REQUIRE(true); // Replace with actual permission test
-    }
+    REQUIRE(result.has_value());
+    const auto& cfg = *result;
+
+    // patches_dir should default to project_root/patches if not set
+    CHECK_THAT(cfg.paths.patches_dir, ContainsSubstring("patches"));
+    CHECK_THAT(cfg.paths.patches_dir, ContainsSubstring("my_workspace"));
+
+    // modules_dir should default to project_root/examples/modules if not set
+    CHECK_THAT(cfg.paths.modules_dir, ContainsSubstring("modules"));
 }

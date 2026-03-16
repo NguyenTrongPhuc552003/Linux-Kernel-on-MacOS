@@ -5,10 +5,10 @@
 add_library(elmos_app STATIC
     app.cpp
     commands/registry.cpp
-    commands/init.cpp
+    commands/workspace.cpp
     commands/kernel.cpp
     commands/module.cpp
-    commands/apps.cpp
+    commands/app.cpp
     commands/doctor.cpp
     commands/arch.cpp
     commands/qemu.cpp
@@ -16,10 +16,9 @@ add_library(elmos_app STATIC
     commands/rootfs.cpp
     commands/bootloader.cpp
     commands/patch.cpp
-    commands/plugins.cpp
+    commands/plugin.cpp
     commands/version.cpp
     commands/tui.cpp
-    commands/status.cpp
     commands/bsp.cpp
 )
 
@@ -27,6 +26,9 @@ target_include_directories(elmos_app
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
     PUBLIC ${CMAKE_SOURCE_DIR}/include
     PUBLIC ${CMAKE_SOURCE_DIR}/src
+    # embedded_resources.hpp is generated into build/generated/ at configure time.
+    # elmos_app sources (init.cpp) include it via <embedded_resources.hpp>.
+    PRIVATE "${CMAKE_BINARY_DIR}/generated"
 )
 
 find_package(CLI11 CONFIG REQUIRED)

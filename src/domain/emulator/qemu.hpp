@@ -26,6 +26,9 @@ struct RunOptions {
     std::string initrd;
     std::string append;
     std::vector<std::string> extra_args;
+    /// When true, always pass -kernel <linux_image> directly even if a U-Boot
+    /// binary is present in the bootloader directory.
+    bool force_direct_kernel = false;
 };
 
 class QEMURunner {
@@ -36,6 +39,13 @@ public:
     auto build_command(const RunOptions& opts)
         -> Result<std::pair<std::string, std::vector<std::string>>>;
     auto is_available(std::stop_token token) -> bool;
+
+    /// Returns true when a U-Boot binary exists in the bootloader directory.
+    auto has_bootloader() const -> bool;
+
+    /// Returns the path to the U-Boot binary, or empty string if not found.
+    /// Search order: u-boot.bin → u-boot.itb → u-boot (ELF).
+    auto find_bootloader() const -> std::string;
 
 private:
     context::Context* ctx_;

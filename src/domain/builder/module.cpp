@@ -17,6 +17,18 @@ namespace elmos::domain::builder {
 
 namespace fs = std::filesystem;
 
+namespace {
+void append_host_make_flags(context::Context* ctx, std::vector<std::string>& args) {
+    auto host_flags = ctx->get_host_cflags();
+    if (host_flags.empty()) {
+        return;
+    }
+
+    args.push_back("HOSTCFLAGS=" + host_flags);
+    args.push_back("HOSTCPPFLAGS=" + host_flags);
+}
+}  // namespace
+
 ModuleBuilder::ModuleBuilder(context::Context* ctx, toolchain::Manager* tm) : ctx_(ctx), tm_(tm) {}
 
 auto ModuleBuilder::build(std::stop_token token, const std::string& name) -> VoidResult {
@@ -35,15 +47,11 @@ auto ModuleBuilder::build_module(std::stop_token token, const ModuleInfo& mod) -
     auto& cfg = ctx_->config();
     auto env = ctx_->get_make_env();
 
-    return ctx_->exec().run_with_env(token, env, "make",
-                                     {
-                                         "-C",
-                                         cfg.paths.kernel_dir,
-                                         "M=" + mod.path,
-                                         "ARCH=" + cfg.build.arch,
-                                         "LLVM=1",
-                                         "modules",
-                                     });
+    std::vector<std::string> args = {
+        "-C", cfg.paths.kernel_dir, "M=" + mod.path, "ARCH=" + cfg.build.arch, "LLVM=1", "modules",
+    };
+    append_host_make_flags(ctx_, args);
+    return ctx_->exec().run_with_env(token, env, "make", args);
 }
 
 auto ModuleBuilder::clean(std::stop_token token, const std::string& name) -> VoidResult {
@@ -127,15 +135,16 @@ auto ModuleBuilder::extract_description(const std::string& content) -> std::stri
 auto ModuleBuilder::prepare_headers(std::stop_token token) -> VoidResult {
     auto& cfg = ctx_->config();
     auto env = ctx_->get_make_env();
-    return ctx_->exec().run_with_env(token, env, "make",
-                                     {
-                                         "-C",
-                                         cfg.paths.kernel_dir,
-                                         "-j" + std::to_string(cfg.build.jobs),
-                                         "ARCH=" + cfg.build.arch,
-                                         "LLVM=1",
-                                         "modules_prepare",
-                                     });
+    std::vector<std::string> args = {
+        "-C",
+        cfg.paths.kernel_dir,
+        "-j" + std::to_string(cfg.build.jobs),
+        "ARCH=" + cfg.build.arch,
+        "LLVM=1",
+        "modules_prepare",
+    };
+    append_host_make_flags(ctx_, args);
+    return ctx_->exec().run_with_env(token, env, "make", args);
 }
 
 auto ModuleBuilder::create_module(const std::string& name) -> VoidResult {

@@ -1,0 +1,4 @@
+# Doctor feature checks OS dependencies, environment variables (IMPORTANT!!!) and toolchain flags. It is a good idea to run it before building toolchains to ensure all requirements are met.
+
+# Issues:
+- `-f|--fix` flag now should automatically creates symbolic links at the current active workspace in $HOME/.elmos/workspaces/<workspace_name>/sysroot/asm/ folder to the corresponding linux kernel header APIs. Please using the `ls -l` command at the include/sysroot/asm/ folder to see what headers are linked. Note: this $HOME/.elmos/sysroot/ folder is a global sysroot folder that is shared across all workspaces different from the workspace-specific sysroot folder at $HOME/.elmos/workspaces/<workspace_name>/sysroot/asm/ folder contains symbolic links to the corresponding linux kernel header APIs. If you have any issues with the symbolic links, please run `elmos doctor -f` command to fix it.

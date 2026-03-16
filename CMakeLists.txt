@@ -10,7 +10,17 @@ cmake_minimum_required(VERSION 3.25)
 # ============================================================================
 
 # vcpkg toolchain must be set before project()
-if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+# Keep macOS behavior unchanged, but default Linux/WSL builds to system deps
+# to avoid corporate-network TLS/proxy failures during vcpkg downloads.
+if(NOT DEFINED ELMOS_USE_VCPKG)
+    if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+        set(ELMOS_USE_VCPKG OFF CACHE BOOL "Use vcpkg toolchain" FORCE)
+    else()
+        set(ELMOS_USE_VCPKG ON CACHE BOOL "Use vcpkg toolchain" FORCE)
+    endif()
+endif()
+
+if(ELMOS_USE_VCPKG AND DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
         CACHE STRING "Vcpkg toolchain file")
 endif()
@@ -90,7 +100,7 @@ if(NOT inja_FOUND)
         set(CMAKE_POLICY_VERSION_MINIMUM 3.10 CACHE STRING "" FORCE)
     endif()
     FetchContent_Declare(inja
-        GIT_REPOSITORY https://github.com/pantor/inja.git
+        GIT_REPOSITORY git@github.com:pantor/inja.git
         GIT_TAG        v3.4.0
         GIT_SHALLOW    TRUE
     )
@@ -107,7 +117,7 @@ find_package(ftxui CONFIG QUIET)
 if(NOT ftxui_FOUND)
     message(STATUS "ftxui not found via find_package, fetching via FetchContent...")
     FetchContent_Declare(ftxui
-        GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
+        GIT_REPOSITORY git@github.com:ArthurSonzogni/FTXUI.git
         GIT_TAG        v5.0.0
         GIT_SHALLOW    TRUE
     )
@@ -121,6 +131,23 @@ endif()
 # ── Project-wide include path ───────────────────────────────────────────────
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include")
 
+# ── Sysroot polyfill headers (cross-compilation on macOS) ──────────────────
+# Header-only INTERFACE library — no compiled objects, just provides -I path.
+# These headers (elf.h, byteswap.h, endian.h, asm/) are Linux sysroot polyfills
+# used by kernel HOST builds on macOS. The elmos binary itself does not #include
+# them; it passes their directory via HOSTCFLAGS=-I<path> to make.
+add_library(elmos_sysroot INTERFACE)
+target_include_directories(elmos_sysroot INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/sysroot>
+)
+
+# ── Colored CMake output ───────────────────────────────────────────────────
+set(CMAKE_COLOR_DIAGNOSTICS ON)
+include(Colors)
+message(STATUS "${C_CYN}ELMOS${C_RST} v${PROJECT_VERSION} ${C_DIM}(${CMAKE_BUILD_TYPE})${C_RST}")
+message(STATUS "${C_CYN}Compiler${C_RST}: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+message(STATUS "${C_CYN}Platform${C_RST}: ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCESSOR}")
+
 # ── Subdirectories ──────────────────────────────────────────────────────────
 add_subdirectory(src)
 
@@ -129,3 +156,6 @@ if(ELMOS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+# ── Developer targets (replace Taskfile) ────────────────────────────────────
+include(DevTargets)

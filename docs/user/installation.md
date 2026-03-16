@@ -44,22 +44,26 @@ cmake --preset default
 cmake --build build --parallel
 ```
 
-Or with Task:
-```bash
-task build
-```
-
 The binary is produced at `build/bin/elmos`.
 
 ## Initialize Workspace
 
-Create a workspace directory structure:
+Create a disk image, mount a dedicated volume, and scaffold the workspace:
 
 ```bash
 ./build/bin/elmos init my_project
 ```
 
-This generates the workspace configuration and directory layout.
+This creates a case-sensitive volume (`.sparseimage` on macOS, ext4 sparse file on Linux)
+and registers it as the active workspace. No `cd` required — all commands target the active workspace.
+
+To manage multiple workspaces:
+
+```bash
+./build/bin/elmos init project_a project_b   # Create multiple at once
+./build/bin/elmos pick project_b             # Switch active workspace
+./build/bin/elmos pick                       # List all workspaces
+```
 
 ## Verify Setup
 
@@ -78,7 +82,7 @@ For full cross-compilation, install crosstool-ng toolchains:
 ```bash
 ./build/bin/elmos toolchains install    # Install crosstool-ng
 ./build/bin/elmos toolchains list       # List targets
-./build/bin/elmos arch set arm64        # Select architecture
+./build/bin/elmos arch arm64            # Select architecture
 ./build/bin/elmos toolchains build      # Build toolchain (~30-60 min)
 ```
 

@@ -52,6 +52,11 @@ public:
     // Environment construction for make commands
     auto get_make_env() -> EnvList;
 
+    /// Build HOSTCFLAGS string for kernel host tool compilation.
+    /// Includes sysroot polyfill include paths (elf.h, byteswap.h, endian.h)
+    /// and platform-specific defines needed on macOS.
+    auto get_host_cflags() -> std::string;
+
     // Platform ownership
     void set_platform(std::unique_ptr<infra::platform::Platform> p);
 

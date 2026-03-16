@@ -70,182 +70,188 @@ auto ShellExecutor::output_with_env(std::stop_token token, const EnvList& env,
 auto ShellExecutor::run_silent(std::stop_token token, const EnvList& env, const std::string& cmd,
                                const std::vector<std::string>& args) -> VoidResult {
     auto result = execute(token, cmd, args, {.env = env, .suppress_stderr = true});
-    if (!result)
-        return std::unexpected(result.error());
+    if (!result) {
+        return make_error(result.error());
+    }
     return {};
 }
 
-auto ShellExecutor::look_path(const std::string& cmd) -> Result<std::string> {
-    // If cmd contains '/', it's an explicit path
+auto ShellExecutor::look_path(const std::string& cmd) -> std::optional<std::string> {
+    if (cmd.empty()) {
+        return std::nullopt;
+    }
+
     if (cmd.find('/') != std::string::npos) {
-        if (access(cmd.c_str(), X_OK) == 0)
+        std::error_code ec;
+        if (std::filesystem::exists(cmd, ec)) {
             return cmd;
-        return make_error(Error(ErrorCode::Dependency, "executable not found: " + cmd));
+        }
+        return std::nullopt;
     }
 
     const char* path_env = std::getenv("PATH");
-    if (path_env == nullptr) {
-        return make_error(Error(ErrorCode::Dependency, "PATH not set"));
+    if (!path_env) {
+        return std::nullopt;
     }
 
-    std::istringstream paths(path_env);
+    std::stringstream ss(path_env);
     std::string dir;
-    while (std::getline(paths, dir, ':')) {
-        auto full = std::filesystem::path(dir) / cmd;
-        if (access(full.c_str(), X_OK) == 0) {
-            return full.string();
+    while (std::getline(ss, dir, ':')) {
+        if (dir.empty()) {
+            continue;
+        }
+        auto candidate = std::filesystem::path(dir) / cmd;
+        if (::access(candidate.c_str(), X_OK) == 0) {
+            return candidate.string();
         }
     }
 
-    return make_error(Error(ErrorCode::Dependency, "executable not found in PATH: " + cmd));
+    return std::nullopt;
 }
 
 auto ShellExecutor::exec_replace(const std::string& cmd, const std::vector<std::string>& args,
                                  const EnvList& env) -> VoidResult {
-    // Build argv array for execvp
-    std::vector<const char*> argv;
-    argv.push_back(cmd.c_str());
-    for (const auto& arg : args) {
-        argv.push_back(arg.c_str());
+    std::vector<std::string> argv_storage;
+    argv_storage.reserve(args.size() + 1);
+    argv_storage.push_back(cmd);
+    argv_storage.insert(argv_storage.end(), args.begin(), args.end());
+
+    std::vector<char*> argv;
+    argv.reserve(argv_storage.size() + 1);
+    for (auto& token : argv_storage) {
+        argv.push_back(token.data());
     }
     argv.push_back(nullptr);
 
-    // Build envp array
-    auto merged = merge_env(get_current_env_list(), env);
-    std::vector<const char*> envp;
-    for (const auto& e : merged) {
-        envp.push_back(e.c_str());
+    if (!env.empty()) {
+        auto merged = merge_env(get_current_env_list(), env);
+        std::vector<char*> envp;
+        envp.reserve(merged.size() + 1);
+        for (auto& entry : merged) {
+            envp.push_back(entry.data());
+        }
+        envp.push_back(nullptr);
+
+        ::execvpe(cmd.c_str(), argv.data(), envp.data());
     }
-    envp.push_back(nullptr);
+    else {
+        ::execvp(cmd.c_str(), argv.data());
+    }
 
-    execvpe(cmd.c_str(), const_cast<char* const*>(argv.data()),
-            const_cast<char* const*>(envp.data()));
-
-    // execvpe only returns on failure
-    return make_error(Error(ErrorCode::Build, "exec failed: " + cmd + ": " + std::strerror(errno)));
+    return make_error(Error(ErrorCode::Build,
+                            "exec failed for '" + cmd + "': " + std::string(std::strerror(errno))));
 }
 
-auto ShellExecutor::execute(std::stop_token token, const std::string& cmd,
+auto ShellExecutor::execute(std::stop_token /*token*/, const std::string& cmd,
                             const std::vector<std::string>& args, const ExecOptions& opts)
     -> Result<std::string> {
-    // Set up pipe for capturing stdout if needed
     std::array<int, 2> stdout_pipe = {-1, -1};
-    if (opts.capture_stdout) {
-        if (pipe(stdout_pipe.data()) == -1) {
-            return make_error(
-                Error(ErrorCode::Build, "pipe failed: " + std::string(std::strerror(errno))));
-        }
+    if (opts.capture_stdout && ::pipe(stdout_pipe.data()) == -1) {
+        return make_error(
+            Error(ErrorCode::Build, "pipe failed: " + std::string(std::strerror(errno))));
     }
 
-    // Set up pipe for suppressing stderr if needed
     std::array<int, 2> stderr_pipe = {-1, -1};
-    if (opts.suppress_stderr) {
-        if (pipe(stderr_pipe.data()) == -1) {
-            if (opts.capture_stdout) {
-                close(stdout_pipe[0]);
-                close(stdout_pipe[1]);
-            }
-            return make_error(
-                Error(ErrorCode::Build, "pipe failed: " + std::string(std::strerror(errno))));
+    if (opts.suppress_stderr && ::pipe(stderr_pipe.data()) == -1) {
+        if (opts.capture_stdout) {
+            ::close(stdout_pipe[0]);
+            ::close(stdout_pipe[1]);
         }
+        return make_error(
+            Error(ErrorCode::Build, "pipe failed: " + std::string(std::strerror(errno))));
     }
 
-    pid_t pid = fork();
+    pid_t pid = ::fork();
     if (pid == -1) {
         if (opts.capture_stdout) {
-            close(stdout_pipe[0]);
-            close(stdout_pipe[1]);
+            ::close(stdout_pipe[0]);
+            ::close(stdout_pipe[1]);
         }
         if (opts.suppress_stderr) {
-            close(stderr_pipe[0]);
-            close(stderr_pipe[1]);
+            ::close(stderr_pipe[0]);
+            ::close(stderr_pipe[1]);
         }
         return make_error(
             Error(ErrorCode::Build, "fork failed: " + std::string(std::strerror(errno))));
     }
 
     if (pid == 0) {
-        // Child process
         if (opts.capture_stdout) {
-            close(stdout_pipe[0]);
-            dup2(stdout_pipe[1], STDOUT_FILENO);
-            close(stdout_pipe[1]);
+            ::close(stdout_pipe[0]);
+            ::dup2(stdout_pipe[1], STDOUT_FILENO);
+            ::close(stdout_pipe[1]);
         }
 
         if (opts.suppress_stderr) {
-            close(stderr_pipe[0]);
-            dup2(stderr_pipe[1], STDERR_FILENO);
-            close(stderr_pipe[1]);
+            ::close(stderr_pipe[0]);
+            ::dup2(stderr_pipe[1], STDERR_FILENO);
+            ::close(stderr_pipe[1]);
         }
 
-        if (!opts.dir.empty()) {
-            if (chdir(opts.dir.c_str()) == -1) {
-                _exit(127);
-            }
+        if (!opts.dir.empty() && ::chdir(opts.dir.c_str()) == -1) {
+            _exit(127);
         }
 
-        // Build argv
-        std::vector<const char*> argv;
-        argv.push_back(cmd.c_str());
-        for (const auto& arg : args) {
-            argv.push_back(arg.c_str());
+        std::vector<std::string> argv_storage;
+        argv_storage.reserve(args.size() + 1);
+        argv_storage.push_back(cmd);
+        argv_storage.insert(argv_storage.end(), args.begin(), args.end());
+
+        std::vector<char*> argv;
+        argv.reserve(argv_storage.size() + 1);
+        for (auto& token : argv_storage) {
+            argv.push_back(token.data());
         }
         argv.push_back(nullptr);
 
-        // Set environment if specified
         if (!opts.env.empty()) {
             auto merged = merge_env(get_current_env_list(), opts.env);
-            std::vector<const char*> envp;
-            for (const auto& e : merged) {
-                envp.push_back(e.c_str());
+            std::vector<char*> envp;
+            envp.reserve(merged.size() + 1);
+            for (auto& entry : merged) {
+                envp.push_back(entry.data());
             }
             envp.push_back(nullptr);
-            execvpe(cmd.c_str(), const_cast<char* const*>(argv.data()),
-                    const_cast<char* const*>(envp.data()));
+            ::execvpe(cmd.c_str(), argv.data(), envp.data());
         }
         else {
-            execvp(cmd.c_str(), const_cast<char* const*>(argv.data()));
+            ::execvp(cmd.c_str(), argv.data());
         }
 
-        _exit(127);  // exec failed
+        _exit(127);
     }
 
-    // Parent process
     std::string captured;
     if (opts.capture_stdout) {
-        close(stdout_pipe[1]);
+        ::close(stdout_pipe[1]);
         std::array<char, 4096> buf{};
         ssize_t n = 0;
-        while ((n = read(stdout_pipe[0], buf.data(), buf.size())) > 0) {
+        while ((n = ::read(stdout_pipe[0], buf.data(), buf.size())) > 0) {
             captured.append(buf.data(), static_cast<size_t>(n));
         }
-        close(stdout_pipe[0]);
+        ::close(stdout_pipe[0]);
     }
 
     if (opts.suppress_stderr) {
-        close(stderr_pipe[1]);
-        // Drain stderr pipe to avoid blocking the child
+        ::close(stderr_pipe[1]);
         std::array<char, 4096> buf{};
-        while (read(stderr_pipe[0], buf.data(), buf.size()) > 0) {}
-        close(stderr_pipe[0]);
+        while (::read(stderr_pipe[0], buf.data(), buf.size()) > 0) {}
+        ::close(stderr_pipe[0]);
     }
 
     int status = 0;
-    while (true) {
-        pid_t result = waitpid(pid, &status, 0);
-        if (result == -1) {
-            if (errno == EINTR)
-                continue;
+    while (::waitpid(pid, &status, 0) == -1) {
+        if (errno != EINTR) {
             return make_error(
                 Error(ErrorCode::Build, "waitpid failed: " + std::string(std::strerror(errno))));
         }
-        break;
     }
 
     if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
         return make_error(Error(ErrorCode::Build,
                                 cmd + " exited with code " + std::to_string(WEXITSTATUS(status))));
     }
+
     if (WIFSIGNALED(status)) {
         return make_error(
             Error(ErrorCode::Build, cmd + " killed by signal " + std::to_string(WTERMSIG(status))));

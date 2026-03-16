@@ -18,7 +18,7 @@ struct BlobSpec {
     std::string sha256;
 };
 
-/// Manages firmware blob downloads and cache under ~/.elmos/bsp-cache/firmware/
+/// Manages firmware blob downloads and cache under <workspace>/bsp-cache/firmware/
 class FirmwareManager {
 public:
     explicit FirmwareManager(const std::string& cache_dir);

@@ -3,6 +3,7 @@
 // ============================================================================
 
 #include <app/app.hpp>
+#include <config/workspaces.hpp>
 
 #include "commands.hpp"
 
@@ -13,10 +14,19 @@ void register_status(App& app, CLI::App& cli) {
     status->callback([&app] {
         auto& cfg = app.config();
 
-        app.printer().step("Workspace status:");
+        // Show active workspace
+        auto active = config::WorkspaceManager::get_active_workspace();
+        if (active) {
+            app.printer().step("Active workspace: {}", *active);
+        }
+        else {
+            app.printer().warn("No active workspace — run 'elmos init <name>'");
+        }
+
         app.printer().print("  Project root:  {}", cfg.paths.project_root);
         app.printer().print("  Architecture:  {}", cfg.build.arch);
         app.printer().print("  Mount point:   {}", cfg.image.mount_point);
+        app.printer().print("  Image:         {}", cfg.image.path);
 
         if (app.context().is_mounted()) {
             app.printer().success("Volume is mounted");

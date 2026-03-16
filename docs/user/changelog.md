@@ -2,6 +2,16 @@
 
 User-facing changes in ELMOS releases.
 
+## v4.1.0 (Workspace Management)
+
+- **Multi-workspace support**: `elmos init ws1 ws2` creates multiple workspaces at once
+- **`elmos pick`**: Select active workspace — all commands target the picked workspace
+- **Location-independent**: No need to `cd` into workspaces; control from anywhere
+- **Auto-mount**: Volumes are transparently re-mounted after reboot
+- **Persistent config**: Architecture and settings saved per-workspace in `~/.elmos/workspaces/`
+- **`elmos arch`** with no args now shows current architecture (was: help)
+- Config changes (`elmos arch riscv`) persist automatically to workspace config
+
 ## v4.0.0 (C++23 Rewrite)
 
 - **Complete rewrite** from Go to C++23 (GCC 13+)

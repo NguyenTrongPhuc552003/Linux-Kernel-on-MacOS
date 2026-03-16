@@ -8,7 +8,7 @@ Build Linux kernels for ARM64, ARM, and RISC-V.
 
 - Workspace initialized: `elmos init`
 - Dependencies checked: `elmos doctor`
-- Architecture set: `elmos arch set arm64`
+- Architecture set: `elmos arch arm64`
 
 ---
 
@@ -17,8 +17,8 @@ Build Linux kernels for ARM64, ARM, and RISC-V.
 ### 1. Set Architecture
 
 ```bash
-elmos arch set arm64    # or: arm, riscv
-elmos arch              # Show current
+elmos arch arm64    # or: arm, riscv
+elmos arch show     # Show current
 ```
 
 ### 2. Configure Kernel

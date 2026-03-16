@@ -60,7 +60,7 @@ inline const std::vector<RequiredPackage>& required_packages() {
 }
 
 inline const std::vector<std::string_view>& required_headers() {
-    static const std::vector<std::string_view> hdrs = {"elf.h", "byteswap.h"};
+    static const std::vector<std::string_view> hdrs = {"elf.h", "byteswap.h", "endian.h"};
     return hdrs;
 }
 

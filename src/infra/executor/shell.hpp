@@ -35,10 +35,10 @@ public:
     auto run_silent(std::stop_token token, const EnvList& env, const std::string& cmd,
                     const std::vector<std::string>& args = {}) -> VoidResult override;
 
-    auto look_path(const std::string& cmd) -> Result<std::string> override;
+    auto look_path(const std::string& cmd) -> std::optional<std::string> override;
 
     auto exec_replace(const std::string& cmd, const std::vector<std::string>& args,
-                      const EnvList& env) -> VoidResult override;
+                      const EnvList& env = {}) -> VoidResult override;
 
 private:
     struct ExecOptions {
